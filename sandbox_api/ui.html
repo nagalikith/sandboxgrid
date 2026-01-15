@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sandbox Viewer</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #1d1b17;
+        --muted: #5c554b;
+        --paper: #f7f1e8;
+        --panel: #ffffff;
+        --border: #e1d6c8;
+        --accent: #157a6e;
+        --accent-2: #ef9b38;
+        --accent-3: #b23a2f;
+        --shadow: 0 18px 40px rgba(38, 30, 14, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Fira Sans", "IBM Plex Sans", "Trebuchet MS", sans-serif;
+        color: var(--ink);
+        background: radial-gradient(circle at 10% 15%, #fff4da 0%, transparent 42%),
+          radial-gradient(circle at 90% 20%, #e3f3f1 0%, transparent 40%),
+          linear-gradient(135deg, #f7f1e8 0%, #f3efe5 100%);
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image: linear-gradient(rgba(29, 27, 23, 0.06) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(29, 27, 23, 0.04) 1px, transparent 1px);
+        background-size: 90px 90px, 90px 90px;
+        pointer-events: none;
+        opacity: 0.3;
+      }
+
+      main {
+        position: relative;
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 40px 24px 72px;
+      }
+
+      header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 16px;
+        margin-bottom: 26px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(28px, 3vw, 40px);
+        font-family: "Bebas Neue", "Oswald", "Impact", sans-serif;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      header p {
+        margin: 0;
+        color: var(--muted);
+        max-width: 480px;
+        font-size: 0.98rem;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        padding: 22px;
+        box-shadow: var(--shadow);
+      }
+
+      .panel + .panel {
+        margin-top: 22px;
+      }
+
+      form {
+        display: grid;
+        gap: 18px;
+      }
+
+      .grid {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+
+      label {
+        display: block;
+        font-size: 0.78rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+        color: var(--muted);
+      }
+
+      input {
+        width: 100%;
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: #faf7f2;
+        color: var(--ink);
+        font-size: 1rem;
+      }
+
+      input:focus {
+        outline: 2px solid rgba(21, 122, 110, 0.35);
+        border-color: var(--accent);
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+      }
+
+      button {
+        border: none;
+        border-radius: 999px;
+        padding: 12px 22px;
+        font-weight: 600;
+        font-size: 0.95rem;
+        cursor: pointer;
+        background: linear-gradient(120deg, var(--accent), #0f5f56);
+        color: #fff;
+        box-shadow: 0 10px 20px rgba(15, 95, 86, 0.2);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      button.secondary {
+        background: linear-gradient(120deg, var(--accent-2), #e2781a);
+      }
+
+      button.ghost {
+        background: transparent;
+        color: var(--accent-3);
+        border: 1px solid rgba(178, 58, 47, 0.3);
+        box-shadow: none;
+      }
+
+      button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+        box-shadow: none;
+      }
+
+      button:hover:not(:disabled) {
+        transform: translateY(-1px);
+        box-shadow: 0 14px 24px rgba(15, 95, 86, 0.25);
+      }
+
+      .status {
+        font-weight: 600;
+        color: var(--accent);
+      }
+
+      .status.error {
+        color: var(--accent-3);
+      }
+
+      .cards {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        margin-top: 16px;
+      }
+
+      .card {
+        background: #fffaf3;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 18px;
+        min-height: 150px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        animation: rise 0.5s ease;
+      }
+
+      .card h3 {
+        margin: 0;
+        font-size: 1.1rem;
+      }
+
+      .card a {
+        color: var(--accent);
+        text-decoration: none;
+        word-break: break-all;
+      }
+
+      .card a:hover {
+        text-decoration: underline;
+      }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        font-size: 0.92rem;
+        color: var(--muted);
+      }
+
+      .raw {
+        background: #151310;
+        color: #f2eee7;
+        border-radius: 12px;
+        padding: 16px;
+        font-family: "Fira Mono", "JetBrains Mono", "Courier New", monospace;
+        font-size: 0.85rem;
+        overflow-x: auto;
+      }
+
+      .previews {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      }
+
+      .frame-wrap {
+        border-radius: 16px;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        background: #fff;
+        min-height: 260px;
+      }
+
+      .frame-wrap iframe {
+        width: 100%;
+        height: 320px;
+        border: none;
+        background: #fff;
+      }
+
+      .note {
+        margin-top: 10px;
+        font-size: 0.9rem;
+        color: var(--muted);
+      }
+
+      @keyframes rise {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Sandbox Viewer</h1>
+        <p>Fetch a sandbox by ID and open the live control or observer view in a single click.</p>
+      </header>
+
+      <section class="panel">
+        <form id="lookup-form">
+          <div class="grid">
+            <div>
+              <label for="api-base">API base URL</label>
+              <input id="api-base" name="api-base" type="text" autocomplete="off" />
+            </div>
+            <div>
+              <label for="sandbox-id">Sandbox ID</label>
+              <input id="sandbox-id" name="sandbox-id" type="text" autocomplete="off" />
+            </div>
+            <div>
+              <label for="agent-id">X-Agent-Id</label>
+              <input id="agent-id" name="agent-id" type="text" autocomplete="off" />
+            </div>
+          </div>
+
+          <div class="actions">
+            <button type="submit">Fetch sandbox</button>
+            <button type="button" class="secondary" id="load-previews" disabled>Load previews</button>
+            <button type="button" class="ghost" id="clear-previews" disabled>Clear previews</button>
+            <span id="status" class="status">Idle</span>
+          </div>
+        </form>
+        <p class="note">
+          If links return 404, make sure a real provisioner is running (for example, set
+          SANDBOX_PROVISIONER=docker) and the sandbox image is built.
+        </p>
+      </section>
+
+      <section class="panel">
+        <div class="meta">
+          <div>State: <span id="state">-</span></div>
+          <div>Expires: <span id="expires">-</span></div>
+          <div>Message: <span id="message">-</span></div>
+        </div>
+
+        <div class="cards">
+          <div class="card">
+            <h3>Live Control</h3>
+            <a id="browser-link" href="#" target="_blank" rel="noreferrer">-</a>
+            <div class="actions">
+              <button type="button" id="open-browser" disabled>Open</button>
+              <button type="button" class="ghost" id="copy-browser" disabled>Copy</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Dashboard View</h3>
+            <a id="dashboard-link" href="#" target="_blank" rel="noreferrer">-</a>
+            <div class="actions">
+              <button type="button" id="open-dashboard" disabled>Open</button>
+              <button type="button" class="ghost" id="copy-dashboard" disabled>Copy</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Events URL</h3>
+            <a id="events-link" href="#" target="_blank" rel="noreferrer">-</a>
+            <div class="actions">
+              <button type="button" id="open-events" disabled>Open</button>
+              <button type="button" class="ghost" id="copy-events" disabled>Copy</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>CDP URL</h3>
+            <a id="cdp-link" href="#" target="_blank" rel="noreferrer">-</a>
+            <div class="actions">
+              <button type="button" id="open-cdp" disabled>Open</button>
+              <button type="button" class="ghost" id="copy-cdp" disabled>Copy</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Preview</h2>
+        <div class="previews">
+          <div class="frame-wrap">
+            <iframe id="browser-frame" title="Browser preview" loading="lazy"></iframe>
+          </div>
+          <div class="frame-wrap">
+            <iframe id="dashboard-frame" title="Dashboard preview" loading="lazy"></iframe>
+          </div>
+        </div>
+        <p class="note">If previews are blank, use the Open buttons or check frame settings.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Raw response</h2>
+        <pre id="raw" class="raw">{}</pre>
+      </section>
+    </main>
+
+    <script>
+      const form = document.getElementById("lookup-form");
+      const apiBaseInput = document.getElementById("api-base");
+      const sandboxInput = document.getElementById("sandbox-id");
+      const agentInput = document.getElementById("agent-id");
+      const statusEl = document.getElementById("status");
+      const stateEl = document.getElementById("state");
+      const expiresEl = document.getElementById("expires");
+      const messageEl = document.getElementById("message");
+      const rawEl = document.getElementById("raw");
+
+      const browserLink = document.getElementById("browser-link");
+      const dashboardLink = document.getElementById("dashboard-link");
+      const eventsLink = document.getElementById("events-link");
+      const cdpLink = document.getElementById("cdp-link");
+
+      const openBrowser = document.getElementById("open-browser");
+      const openDashboard = document.getElementById("open-dashboard");
+      const openEvents = document.getElementById("open-events");
+      const openCdp = document.getElementById("open-cdp");
+      const copyBrowser = document.getElementById("copy-browser");
+      const copyDashboard = document.getElementById("copy-dashboard");
+      const copyEvents = document.getElementById("copy-events");
+      const copyCdp = document.getElementById("copy-cdp");
+
+      const loadPreviews = document.getElementById("load-previews");
+      const clearPreviews = document.getElementById("clear-previews");
+      const browserFrame = document.getElementById("browser-frame");
+      const dashboardFrame = document.getElementById("dashboard-frame");
+
+      let lastData = null;
+
+      function setStatus(text, isError = false) {
+        statusEl.textContent = text;
+        statusEl.classList.toggle("error", isError);
+      }
+
+      function setLink(el, url) {
+        if (url) {
+          el.textContent = url;
+          el.href = url;
+        } else {
+          el.textContent = "-";
+          el.removeAttribute("href");
+        }
+      }
+
+      function toggleButton(button, enabled) {
+        button.disabled = !enabled;
+      }
+
+      function copyText(text) {
+        if (!text) {
+          return;
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text);
+        } else {
+          window.prompt("Copy to clipboard:", text);
+        }
+      }
+
+      function updateDetails(data) {
+        lastData = data;
+        stateEl.textContent = data.status || "-";
+        expiresEl.textContent = data.expires_at || "-";
+        messageEl.textContent = data.message || "-";
+        setLink(browserLink, data.browser_url);
+        setLink(dashboardLink, data.dashboard_url);
+        setLink(eventsLink, data.events_url);
+        setLink(cdpLink, data.cdp_url);
+        toggleButton(openBrowser, Boolean(data.browser_url));
+        toggleButton(openDashboard, Boolean(data.dashboard_url));
+        toggleButton(openEvents, Boolean(data.events_url));
+        toggleButton(openCdp, Boolean(data.cdp_url));
+        toggleButton(copyBrowser, Boolean(data.browser_url));
+        toggleButton(copyDashboard, Boolean(data.dashboard_url));
+        toggleButton(copyEvents, Boolean(data.events_url));
+        toggleButton(copyCdp, Boolean(data.cdp_url));
+        toggleButton(loadPreviews, Boolean(data.browser_url || data.dashboard_url));
+        toggleButton(clearPreviews, Boolean(data.browser_url || data.dashboard_url));
+        rawEl.textContent = JSON.stringify(data, null, 2);
+      }
+
+      async function fetchSandbox() {
+        const base = apiBaseInput.value.trim().replace(/\/$/, "");
+        const sandboxId = sandboxInput.value.trim();
+        const agentId = agentInput.value.trim();
+        if (!base || !sandboxId) {
+          setStatus("Provide API base and sandbox id.", true);
+          return;
+        }
+        setStatus("Fetching...");
+        try {
+          const response = await fetch(`${base}/sandboxes/${encodeURIComponent(sandboxId)}`, {
+            headers: agentId ? { "X-Agent-Id": agentId } : {},
+          });
+          const data = await response.json();
+          if (!response.ok) {
+            setStatus(`Error ${response.status}`, true);
+            rawEl.textContent = JSON.stringify(data, null, 2);
+            return;
+          }
+          setStatus("Ready");
+          updateDetails(data);
+        } catch (error) {
+          setStatus("Network error", true);
+          rawEl.textContent = JSON.stringify({ error: String(error) }, null, 2);
+        }
+      }
+
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        fetchSandbox();
+      });
+
+      openBrowser.addEventListener("click", () => window.open(browserLink.href, "_blank"));
+      openDashboard.addEventListener("click", () => window.open(dashboardLink.href, "_blank"));
+      openEvents.addEventListener("click", () => window.open(eventsLink.href, "_blank"));
+      openCdp.addEventListener("click", () => window.open(cdpLink.href, "_blank"));
+
+      copyBrowser.addEventListener("click", () => copyText(browserLink.href));
+      copyDashboard.addEventListener("click", () => copyText(dashboardLink.href));
+      copyEvents.addEventListener("click", () => copyText(eventsLink.href));
+      copyCdp.addEventListener("click", () => copyText(cdpLink.href));
+
+      loadPreviews.addEventListener("click", () => {
+        if (lastData?.browser_url) {
+          browserFrame.src = lastData.browser_url;
+        }
+        if (lastData?.dashboard_url) {
+          dashboardFrame.src = lastData.dashboard_url;
+        }
+      });
+
+      clearPreviews.addEventListener("click", () => {
+        browserFrame.removeAttribute("src");
+        dashboardFrame.removeAttribute("src");
+      });
+
+      const params = new URLSearchParams(window.location.search);
+      apiBaseInput.value = params.get("api") || window.location.origin;
+      sandboxInput.value = params.get("sandbox_id") || "";
+      agentInput.value = params.get("agent_id") || "";
+
+      if (params.get("auto") === "1") {
+        fetchSandbox();
+      }
+    </script>
+  </body>
+</html>

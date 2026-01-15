@@ -28,13 +28,13 @@ class SandboxOrchestrator:
 
         record = SandboxRecord(
             sandbox_id=sandbox_id,
-            status=SandboxStatus.provisioning,
+            status=SandboxStatus.requested,
             created_at=now,
             expires_at=expires_at,
             browser_url=None,
             dashboard_url=None,
             events_url=None,
-            message="Provisioning sandbox.",
+            message="Sandbox queued.",
             owner_id=owner_id,
             cpu_limit=request.cpu_limit,
             memory_limit_mb=request.memory_limit_mb,
@@ -43,8 +43,6 @@ class SandboxOrchestrator:
         )
 
         record = self._repository.create(record)
-        asyncio.create_task(self._provision_async(record, request))
-        asyncio.create_task(self._enforce_ttl(record))
         return record
 
     async def get(self, sandbox_id: str) -> Optional[SandboxRecord]:

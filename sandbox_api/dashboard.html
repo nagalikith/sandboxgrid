@@ -1,0 +1,664 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Live Dashboard</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #1f1b16;
+        --muted: #6a5d4b;
+        --paper: #f7f1e8;
+        --panel: #ffffff;
+        --border: #e2d7c7;
+        --accent: #2f6f6a;
+        --accent-2: #d8892b;
+        --accent-3: #9b332c;
+        --shadow: 0 18px 40px rgba(35, 27, 18, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Trebuchet MS", "Segoe UI", Verdana, sans-serif;
+        color: var(--ink);
+        background: radial-gradient(circle at 8% 10%, #fff1d6 0%, transparent 45%),
+          radial-gradient(circle at 92% 12%, #e3f5f2 0%, transparent 40%),
+          linear-gradient(145deg, #f7f1e8 0%, #f2eadf 100%);
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image: linear-gradient(rgba(31, 27, 22, 0.06) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(31, 27, 22, 0.04) 1px, transparent 1px);
+        background-size: 90px 90px, 90px 90px;
+        opacity: 0.28;
+        pointer-events: none;
+      }
+
+      main {
+        position: relative;
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 36px 24px 70px;
+      }
+
+      header {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 18px;
+        align-items: center;
+        margin-bottom: 20px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(28px, 3.5vw, 44px);
+        font-family: "Georgia", "Times New Roman", serif;
+        letter-spacing: 0.02em;
+      }
+
+      .subtitle {
+        margin: 6px 0 0;
+        color: var(--muted);
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        padding: 20px;
+        box-shadow: var(--shadow);
+      }
+
+      .panel + .panel {
+        margin-top: 18px;
+      }
+
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 14px;
+        border-radius: 999px;
+        font-weight: 600;
+        background: rgba(47, 111, 106, 0.12);
+        color: var(--accent);
+      }
+
+      .status-pill.error {
+        background: rgba(155, 51, 44, 0.12);
+        color: var(--accent-3);
+      }
+
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+      }
+
+      label {
+        font-size: 0.72rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      input {
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: #fbf8f2;
+        font-size: 0.95rem;
+      }
+
+      button {
+        border: none;
+        border-radius: 999px;
+        padding: 10px 18px;
+        font-weight: 600;
+        cursor: pointer;
+        background: linear-gradient(120deg, var(--accent), #175852);
+        color: #fff;
+        box-shadow: 0 10px 20px rgba(15, 95, 86, 0.2);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      button.secondary {
+        background: linear-gradient(120deg, var(--accent-2), #c97220);
+      }
+
+      button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 14px 24px rgba(15, 95, 86, 0.25);
+      }
+
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 14px;
+      }
+
+      .metric-card {
+        padding: 16px;
+        border-radius: 14px;
+        border: 1px solid var(--border);
+        background: #fff9f1;
+      }
+
+      .metric-label {
+        color: var(--muted);
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+      }
+
+      .metric-value {
+        font-size: 1.6rem;
+        font-weight: 700;
+        margin-top: 8px;
+      }
+
+      .metric-delta {
+        margin-top: 6px;
+        font-size: 0.9rem;
+        font-weight: 600;
+      }
+
+      .metric-delta.up {
+        color: var(--accent);
+      }
+
+      .metric-delta.down {
+        color: var(--accent-3);
+      }
+
+      .metric-delta.neutral {
+        color: var(--muted);
+      }
+
+      .charts {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      }
+
+      .chart-card {
+        padding: 16px;
+        border-radius: 14px;
+        border: 1px solid var(--border);
+        background: #fefaf4;
+      }
+
+      .chart-title {
+        margin: 0 0 12px;
+        font-size: 1rem;
+      }
+
+      canvas {
+        width: 100%;
+        height: 200px;
+        display: block;
+        background: #fff;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+      }
+
+      .tables {
+        display: grid;
+        gap: 16px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.92rem;
+      }
+
+      th,
+      td {
+        text-align: left;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      th {
+        text-transform: uppercase;
+        font-size: 0.7rem;
+        letter-spacing: 0.12em;
+        color: var(--muted);
+      }
+
+      .notes {
+        display: grid;
+        gap: 8px;
+        color: var(--muted);
+      }
+
+      .empty {
+        text-align: center;
+        padding: 40px 20px;
+        color: var(--muted);
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1 id="dashboard-title">Live Dashboard</h1>
+          <p class="subtitle" id="dashboard-subtitle">Waiting for data</p>
+        </div>
+        <div class="toolbar panel">
+          <span id="status" class="status-pill">Idle</span>
+          <div class="controls">
+            <div>
+              <label for="agent-id">X-Agent-Id</label>
+              <input id="agent-id" type="text" autocomplete="off" placeholder="agent id" />
+            </div>
+            <button type="button" id="apply-agent">Apply</button>
+            <button type="button" class="secondary" id="refresh-data">Refresh</button>
+          </div>
+        </div>
+      </header>
+
+      <section class="panel">
+        <div class="metrics" id="metrics"></div>
+        <div class="empty" id="metrics-empty">No metrics yet.</div>
+      </section>
+
+      <section class="panel">
+        <div class="charts" id="charts"></div>
+        <div class="empty" id="charts-empty">No charts yet.</div>
+      </section>
+
+      <section class="panel">
+        <div class="tables" id="tables"></div>
+        <div class="empty" id="tables-empty">No tables yet.</div>
+      </section>
+
+      <section class="panel">
+        <h2>Notes</h2>
+        <div class="notes" id="notes"></div>
+        <div class="empty" id="notes-empty">No notes yet.</div>
+      </section>
+    </main>
+
+    <script>
+      const palette = ["#2f6f6a", "#d8892b", "#9b332c", "#34548a", "#5d7d46"];
+      const statusEl = document.getElementById("status");
+      const titleEl = document.getElementById("dashboard-title");
+      const subtitleEl = document.getElementById("dashboard-subtitle");
+      const agentInput = document.getElementById("agent-id");
+      const metricsEl = document.getElementById("metrics");
+      const chartsEl = document.getElementById("charts");
+      const tablesEl = document.getElementById("tables");
+      const notesEl = document.getElementById("notes");
+      const metricsEmpty = document.getElementById("metrics-empty");
+      const chartsEmpty = document.getElementById("charts-empty");
+      const tablesEmpty = document.getElementById("tables-empty");
+      const notesEmpty = document.getElementById("notes-empty");
+      const refreshButton = document.getElementById("refresh-data");
+      const applyButton = document.getElementById("apply-agent");
+
+      const pathMatch = window.location.pathname.match(/\\/sandboxes\\/([^/]+)\\/dashboard/);
+      const sandboxId = pathMatch ? pathMatch[1] : "";
+      const params = new URLSearchParams(window.location.search);
+      const apiBase = params.get("api") || window.location.origin;
+      const dataUrl = params.get("data_url") || `${apiBase}/sandboxes/${sandboxId}/dashboard/data`;
+      const streamUrl = params.get("stream_url") || `${apiBase}/sandboxes/${sandboxId}/events`;
+
+      const storedAgent = localStorage.getItem("dashboard_agent_id") || "";
+      agentInput.value = params.get("agent_id") || storedAgent;
+
+      function setStatus(text, isError = false) {
+        statusEl.textContent = text;
+        statusEl.classList.toggle("error", isError);
+      }
+
+      function buildHeaders() {
+        const agentId = agentInput.value.trim();
+        if (!agentId) {
+          return {};
+        }
+        return { "X-Agent-Id": agentId };
+      }
+
+      function saveAgentId() {
+        localStorage.setItem("dashboard_agent_id", agentInput.value.trim());
+      }
+
+      function clearNode(node) {
+        while (node.firstChild) {
+          node.removeChild(node.firstChild);
+        }
+      }
+
+      function formatValue(value) {
+        if (value === null || value === undefined) {
+          return "-";
+        }
+        if (typeof value === "number") {
+          return value.toLocaleString();
+        }
+        return String(value);
+      }
+
+      function renderMetrics(metrics) {
+        clearNode(metricsEl);
+        if (!metrics || metrics.length === 0) {
+          metricsEmpty.style.display = "block";
+          return;
+        }
+        metricsEmpty.style.display = "none";
+        metrics.forEach((metric) => {
+          const card = document.createElement("div");
+          card.className = "metric-card";
+          const label = document.createElement("div");
+          label.className = "metric-label";
+          label.textContent = metric.label || "Metric";
+          const value = document.createElement("div");
+          value.className = "metric-value";
+          value.textContent = formatValue(metric.value);
+          card.appendChild(label);
+          card.appendChild(value);
+          if (metric.delta) {
+            const delta = document.createElement("div");
+            delta.className = `metric-delta ${metric.tone || "neutral"}`;
+            delta.textContent = metric.delta;
+            card.appendChild(delta);
+          }
+          metricsEl.appendChild(card);
+        });
+      }
+
+      function drawGrid(ctx, width, height, padding) {
+        ctx.strokeStyle = "rgba(31, 27, 22, 0.08)";
+        ctx.lineWidth = 1;
+        const steps = 4;
+        for (let i = 0; i <= steps; i++) {
+          const y = padding + ((height - padding * 2) / steps) * i;
+          ctx.beginPath();
+          ctx.moveTo(padding, y);
+          ctx.lineTo(width - padding, y);
+          ctx.stroke();
+        }
+      }
+
+      function drawAxes(ctx, width, height, padding) {
+        ctx.strokeStyle = "rgba(31, 27, 22, 0.2)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(padding, padding);
+        ctx.lineTo(padding, height - padding);
+        ctx.lineTo(width - padding, height - padding);
+        ctx.stroke();
+      }
+
+      function drawLineChart(canvas, chart) {
+        const ctx = canvas.getContext("2d");
+        const width = canvas.width;
+        const height = canvas.height;
+        const padding = 28;
+        ctx.clearRect(0, 0, width, height);
+
+        const allPoints = chart.series.flatMap((series) => series.points || []);
+        if (allPoints.length === 0) {
+          return;
+        }
+        const values = allPoints.map((point) => point.v);
+        let min = Math.min(...values);
+        let max = Math.max(...values);
+        if (min === max) {
+          min -= 1;
+          max += 1;
+        }
+
+        drawGrid(ctx, width, height, padding);
+        drawAxes(ctx, width, height, padding);
+
+        chart.series.forEach((series, idx) => {
+          const points = series.points || [];
+          if (points.length === 0) {
+            return;
+          }
+          ctx.strokeStyle = palette[idx % palette.length];
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          points.forEach((point, i) => {
+            const xStep = (width - padding * 2) / Math.max(points.length - 1, 1);
+            const x = padding + xStep * i;
+            const y =
+              height -
+              padding -
+              ((point.v - min) / (max - min)) * (height - padding * 2);
+            if (i === 0) {
+              ctx.moveTo(x, y);
+            } else {
+              ctx.lineTo(x, y);
+            }
+          });
+          ctx.stroke();
+        });
+      }
+
+      function drawBarChart(canvas, chart) {
+        const ctx = canvas.getContext("2d");
+        const width = canvas.width;
+        const height = canvas.height;
+        const padding = 28;
+        ctx.clearRect(0, 0, width, height);
+
+        const seriesList = chart.series || [];
+        if (seriesList.length === 0) {
+          return;
+        }
+        const pointCount = Math.max(...seriesList.map((series) => series.points.length));
+        const allPoints = seriesList.flatMap((series) => series.points);
+        if (allPoints.length === 0) {
+          return;
+        }
+        const values = allPoints.map((point) => point.v);
+        let min = Math.min(...values);
+        let max = Math.max(...values);
+        if (min === max) {
+          min = 0;
+          max += 1;
+        }
+        if (min > 0) {
+          min = 0;
+        }
+
+        drawGrid(ctx, width, height, padding);
+        drawAxes(ctx, width, height, padding);
+
+        const groupWidth = (width - padding * 2) / Math.max(pointCount, 1);
+        const barWidth = (groupWidth * 0.7) / seriesList.length;
+        seriesList.forEach((series, seriesIndex) => {
+          ctx.fillStyle = palette[seriesIndex % palette.length];
+          series.points.forEach((point, i) => {
+            const x =
+              padding +
+              groupWidth * i +
+              (groupWidth * 0.15) +
+              barWidth * seriesIndex;
+            const barHeight =
+              ((point.v - min) / (max - min)) * (height - padding * 2);
+            const y = height - padding - barHeight;
+            ctx.fillRect(x, y, barWidth, barHeight);
+          });
+        });
+      }
+
+      function renderCharts(charts) {
+        clearNode(chartsEl);
+        if (!charts || charts.length === 0) {
+          chartsEmpty.style.display = "block";
+          return;
+        }
+        chartsEmpty.style.display = "none";
+        charts.forEach((chart, index) => {
+          const card = document.createElement("div");
+          card.className = "chart-card";
+          const title = document.createElement("h3");
+          title.className = "chart-title";
+          title.textContent = chart.title || `Chart ${index + 1}`;
+          const canvas = document.createElement("canvas");
+          canvas.width = 520;
+          canvas.height = 220;
+          card.appendChild(title);
+          card.appendChild(canvas);
+          chartsEl.appendChild(card);
+          if (chart.type === "bar") {
+            drawBarChart(canvas, chart);
+          } else {
+            drawLineChart(canvas, chart);
+          }
+        });
+      }
+
+      function renderTables(tables) {
+        clearNode(tablesEl);
+        if (!tables || tables.length === 0) {
+          tablesEmpty.style.display = "block";
+          return;
+        }
+        tablesEmpty.style.display = "none";
+        tables.forEach((table) => {
+          const wrapper = document.createElement("div");
+          wrapper.className = "chart-card";
+          if (table.title) {
+            const heading = document.createElement("h3");
+            heading.className = "chart-title";
+            heading.textContent = table.title;
+            wrapper.appendChild(heading);
+          }
+          const tableEl = document.createElement("table");
+          const thead = document.createElement("thead");
+          const headRow = document.createElement("tr");
+          (table.columns || []).forEach((col) => {
+            const th = document.createElement("th");
+            th.textContent = col;
+            headRow.appendChild(th);
+          });
+          thead.appendChild(headRow);
+          tableEl.appendChild(thead);
+          const tbody = document.createElement("tbody");
+          (table.rows || []).forEach((row) => {
+            const tr = document.createElement("tr");
+            row.forEach((cell) => {
+              const td = document.createElement("td");
+              td.textContent = formatValue(cell);
+              tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+          });
+          tableEl.appendChild(tbody);
+          wrapper.appendChild(tableEl);
+          tablesEl.appendChild(wrapper);
+        });
+      }
+
+      function renderNotes(notes) {
+        clearNode(notesEl);
+        if (!notes || notes.length === 0) {
+          notesEmpty.style.display = "block";
+          return;
+        }
+        notesEmpty.style.display = "none";
+        notes.forEach((note) => {
+          const item = document.createElement("div");
+          item.textContent = note;
+          notesEl.appendChild(item);
+        });
+      }
+
+      function renderDashboard(data) {
+        titleEl.textContent = data.title || "Live Dashboard";
+        subtitleEl.textContent = data.subtitle || data.updated_at || "Live updates";
+        renderMetrics(data.metrics);
+        renderCharts(data.charts);
+        renderTables(data.tables);
+        renderNotes(data.notes);
+      }
+
+      async function fetchData() {
+        setStatus("Loading");
+        try {
+          const response = await fetch(dataUrl, { headers: buildHeaders() });
+          const data = await response.json();
+          if (!response.ok) {
+            setStatus(`Error ${response.status}`, true);
+            return;
+          }
+          setStatus("Live");
+          renderDashboard(data);
+        } catch (error) {
+          setStatus("Offline", true);
+        }
+      }
+
+      function startStream() {
+        if (!streamUrl) {
+          return;
+        }
+        const stream = new EventSource(streamUrl);
+        stream.onmessage = (event) => {
+          if (!event.data) {
+            return;
+          }
+          try {
+            const payload = JSON.parse(event.data);
+            if (payload.type === "dashboard_data") {
+              renderDashboard(payload.payload);
+              setStatus("Live");
+            }
+          } catch (error) {
+            return;
+          }
+        };
+        stream.onerror = () => {
+          setStatus("Stream paused", true);
+        };
+      }
+
+      applyButton.addEventListener("click", () => {
+        saveAgentId();
+        fetchData();
+      });
+
+      refreshButton.addEventListener("click", () => {
+        saveAgentId();
+        fetchData();
+      });
+
+      fetchData();
+      startStream();
+      setInterval(fetchData, 12000);
+    </script>
+  </body>
+</html>

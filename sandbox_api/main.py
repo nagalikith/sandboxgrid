@@ -3,16 +3,20 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 
 from .artifacts import router as artifacts_router
 from .commands import build_commands_router
+from .dashboard import build_dashboard_router
 from .database import init_db, engine
 from .events import event_bus, sse_format
+from .jobs import ProvisionJob
 from .models import SandboxRequest, SandboxResponse, sandbox_response_from_record
 from .orchestrator import SandboxOrchestrator
+from .rabbitmq import rabbitmq
 from .storage import SandboxRepository
 
 
@@ -20,7 +24,9 @@ app = FastAPI(title="Sandbox API", version="0.1.0")
 router = APIRouter(prefix="/sandboxes", tags=["sandboxes"])
 repository = SandboxRepository(engine)
 orchestrator = SandboxOrchestrator(repository=repository)
-commands_router = build_commands_router(orchestrator, repository)
+commands_router = build_commands_router(orchestrator, rabbitmq)
+dashboard_router = build_dashboard_router(orchestrator, rabbitmq)
+dashboard_router = build_dashboard_router(orchestrator)
 
 
 async def get_agent_id(x_agent_id: str | None = Header(default=None)) -> str:
@@ -39,6 +45,20 @@ async def create_sandbox(
     agent_id: str = Depends(get_agent_id),
 ) -> SandboxResponse:
     record = await orchestrator.provision(request, owner_id=agent_id)
+    try:
+        await rabbitmq.publish_job(
+            ProvisionJob(
+                sandbox_id=record.sandbox_id,
+                owner_id=agent_id,
+                request=request,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        repository.set_error(record.sandbox_id, message=f"Queue error: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Queue unavailable. Try again later.",
+        ) from exc
     return sandbox_response_from_record(record)
 
 
@@ -62,11 +82,34 @@ async def get_sandbox(
 app.include_router(router)
 app.include_router(commands_router)
 app.include_router(artifacts_router)
+app.include_router(dashboard_router)
+
+_UI_PATH = Path(__file__).with_name("ui.html")
+
+
+@app.get("/ui", response_class=HTMLResponse)
+def sandbox_ui() -> HTMLResponse:
+    return HTMLResponse(_UI_PATH.read_text(encoding="utf-8"))
 
 
 @app.on_event("startup")
-def startup() -> None:
+async def startup() -> None:
     init_db()
+
+    async def handle_event(message) -> None:
+        async with message.process():
+            payload = json.loads(message.body.decode("utf-8"))
+            sandbox_id = payload.get("sandbox_id")
+            if sandbox_id:
+                await event_bus.publish(sandbox_id, payload)
+
+    await rabbitmq.connect()
+    await rabbitmq.consume_events(handle_event)
+
+
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    await rabbitmq.close()
 
 
 @app.get("/sandboxes/{sandbox_id}/events")

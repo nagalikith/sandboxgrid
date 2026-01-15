@@ -102,8 +102,8 @@ class SandboxRepository:
         self,
         sandbox_id: str,
         *,
-        browser_url: str,
-        dashboard_url: str,
+        browser_url: Optional[str],
+        dashboard_url: Optional[str],
         events_url: str,
         message: str = "Sandbox ready.",
         backend_ref: Optional[str] = None,
@@ -126,6 +126,25 @@ class SandboxRepository:
             row.cdp_port = cdp_port or row.cdp_port
             row.artifacts_path = artifacts_path or row.artifacts_path
             row.cdp_url = cdp_url or row.cdp_url
+            session.add(row)
+            session.commit()
+            session.refresh(row)
+            return row.to_record()
+
+    def set_status(
+        self,
+        sandbox_id: str,
+        *,
+        status: SandboxStatus,
+        message: Optional[str] = None,
+    ) -> Optional[SandboxRecord]:
+        with Session(self.engine) as session:
+            row = session.get(SandboxRow, sandbox_id)
+            if not row:
+                return None
+            row.status = status
+            if message is not None:
+                row.message = message
             session.add(row)
             session.commit()
             session.refresh(row)
