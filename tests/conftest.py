@@ -16,6 +16,7 @@ def client(tmp_path_factory):
 
     os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
     os.environ["SANDBOX_ARTIFACTS_ROOT"] = str(artifacts_root)
+    os.environ["INTERNAL_AUTH_SECRET"] = "test-secret"
 
     import sandbox_api.database as database
     importlib.reload(database)

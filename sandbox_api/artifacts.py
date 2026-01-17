@@ -7,12 +7,13 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, JSON
 from sqlmodel import Field as SQLField, Session, SQLModel, select
 
 from .database import engine
+from .internal_auth import internal_auth_dependency
 from .paths import owner_directory
 
 
@@ -377,10 +378,8 @@ class ArtifactManifestResponse(BaseModel):
 repository = ArtifactRepository(engine)
 store = ArtifactStore(Path(os.getenv("SANDBOX_ARTIFACTS_ROOT", "./artifacts")))
 router = APIRouter(tags=["artifacts"])
-
-
-async def get_agent_id(x_agent_id: str | None = Header(default=None)) -> str:
-    return x_agent_id or "anonymous"
+require_internal_auth = internal_auth_dependency()
+require_internal_auth_no_body = internal_auth_dependency(enforce_body_hash=False)
 
 
 def _build_response(record: ArtifactRecord, *, parents: Optional[List[str]] = None) -> ArtifactResponse:
@@ -420,7 +419,7 @@ def _parents_map(owner_id: str, records: Iterable[ArtifactRecord]) -> Dict[str, 
 )
 async def create_artifact(
     payload: ArtifactCreate,
-    agent_id: str = Depends(get_agent_id),
+    agent_id: str = Depends(require_internal_auth),
 ) -> ArtifactResponse:
     now = datetime.now(timezone.utc)
     record = ArtifactRecord(
@@ -457,7 +456,7 @@ async def upload_blob(
     artifact_id: str,
     request: Request,
     presign: bool = Query(False, description="Return upload URL instead of uploading."),
-    agent_id: str = Depends(get_agent_id),
+    agent_id: str = Depends(require_internal_auth_no_body),
 ) -> ArtifactBlobResult:
     record = repository.get(artifact_id)
     if not record:
@@ -487,12 +486,24 @@ async def upload_blob(
     if size_bytes == 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty upload.")
 
+    expected_hash = getattr(request.state, "expected_body_sha256", None)
+    actual_hash = hasher.hexdigest()
+    if expected_hash and expected_hash != actual_hash:
+        try:
+            blob_path.unlink()
+        except OSError:
+            pass
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Body hash mismatch.",
+        )
+
     content_type = request.headers.get("content-type")
     updated = repository.update_blob(
         record.artifact_id,
         blob_path=str(blob_path.resolve()),
         size_bytes=size_bytes,
-        checksum_sha256=hasher.hexdigest(),
+        checksum_sha256=actual_hash,
         mime_type=content_type,
     )
     if not updated:
@@ -507,7 +518,7 @@ async def upload_blob(
 )
 async def get_artifact(
     artifact_id: str,
-    agent_id: str = Depends(get_agent_id),
+    agent_id: str = Depends(require_internal_auth),
 ) -> ArtifactResponse:
     record = repository.get(artifact_id)
     if not record:
@@ -525,7 +536,7 @@ async def get_artifact(
     summary="List artifacts",
 )
 async def list_artifacts(
-    agent_id: str = Depends(get_agent_id),
+    agent_id: str = Depends(require_internal_auth),
     session_id: Optional[str] = Query(default=None),
     artifact_type: Optional[str] = Query(default=None, alias="type"),
     source: Optional[str] = Query(default=None),
@@ -572,7 +583,7 @@ async def list_artifacts(
 async def derive_artifact(
     artifact_id: str,
     payload: ArtifactDeriveRequest,
-    agent_id: str = Depends(get_agent_id),
+    agent_id: str = Depends(require_internal_auth),
 ) -> ArtifactDeriveResponse:
     child = repository.get(artifact_id)
     if not child:
@@ -619,7 +630,7 @@ async def derive_artifact(
 )
 async def session_manifest(
     session_id: str,
-    agent_id: str = Depends(get_agent_id),
+    agent_id: str = Depends(require_internal_auth),
 ) -> ArtifactManifestResponse:
     records = repository.list(owner_id=agent_id, session_id=session_id, limit=500)
     key_tags = {"key", "manifest", "hero"}

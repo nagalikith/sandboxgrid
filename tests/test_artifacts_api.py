@@ -1,14 +1,55 @@
 import hashlib
+import hmac
+import json
+import time
+from urllib.parse import urlencode
 
 from sandbox_api.paths import owner_directory
 
 
-def _headers(agent_id="user_a"):
-    return {"X-Agent-Id": agent_id}
+_INTERNAL_SECRET = b"test-secret"
+
+
+def _auth_headers(
+    method: str,
+    path: str,
+    *,
+    body: bytes = b"",
+    user_id: str = "user_a",
+    params=None,
+    content_type: str | None = None,
+):
+    timestamp = str(int(time.time()))
+    query = urlencode(params, doseq=True) if params else ""
+    full_path = f"{path}?{query}" if query else path
+    body_hash = hashlib.sha256(body).hexdigest()
+    signature_payload = f"{timestamp}\n{method.upper()}\n{full_path}\n{body_hash}"
+    signature = hmac.new(
+        _INTERNAL_SECRET,
+        signature_payload.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    headers = {
+        "X-Internal-Timestamp": timestamp,
+        "X-Body-SHA256": body_hash,
+        "X-Internal-Signature": signature,
+        "X-User-Id": user_id,
+    }
+    if content_type:
+        headers["Content-Type"] = content_type
+    return headers
 
 
 def _create_artifact(client, payload, agent_id="user_a"):
-    response = client.post("/artifacts", json=payload, headers=_headers(agent_id))
+    body = json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    headers = _auth_headers(
+        "POST",
+        "/artifacts",
+        body=body,
+        user_id=agent_id,
+        content_type="application/json",
+    )
+    response = client.post("/artifacts", data=body, headers=headers)
     assert response.status_code == 201
     return response.json()
 
@@ -36,7 +77,8 @@ def test_create_and_get_artifact(client):
     assert created["created_at"]
 
     artifact_id = created["artifact_id"]
-    response = client.get(f"/artifacts/{artifact_id}", headers=_headers())
+    headers = _auth_headers("GET", f"/artifacts/{artifact_id}")
+    response = client.get(f"/artifacts/{artifact_id}", headers=headers)
     assert response.status_code == 200
     fetched = response.json()
     assert fetched["artifact_id"] == artifact_id
@@ -57,9 +99,15 @@ def test_upload_blob_sets_hash_and_persists(client, artifacts_root):
     )
     artifact_id = created["artifact_id"]
     body = b"hello world"
+    headers = _auth_headers(
+        "PUT",
+        f"/artifacts/{artifact_id}/blob",
+        body=body,
+        content_type="application/octet-stream",
+    )
     response = client.put(
         f"/artifacts/{artifact_id}/blob",
-        headers=_headers(),
+        headers=headers,
         data=body,
     )
     assert response.status_code == 200
@@ -97,17 +145,17 @@ def test_list_filters_and_tags(client):
         },
     )
 
-    response = client.get("/artifacts", headers=_headers(), params={"type": "screenshot"})
+    params = {"type": "screenshot"}
+    headers = _auth_headers("GET", "/artifacts", params=params)
+    response = client.get("/artifacts", headers=headers, params=params)
     assert response.status_code == 200
     items = response.json()["items"]
     assert len(items) == 1
     assert items[0]["artifact_id"] == first["artifact_id"]
 
-    response = client.get(
-        "/artifacts",
-        headers=_headers(),
-        params=[("tags", "project-x"), ("tags", "alpha")],
-    )
+    params = [("tags", "project-x"), ("tags", "alpha")]
+    headers = _auth_headers("GET", "/artifacts", params=params)
+    response = client.get("/artifacts", headers=headers, params=params)
     assert response.status_code == 200
     items = response.json()["items"]
     assert len(items) == 1
@@ -124,14 +172,23 @@ def test_derive_and_manifest(client):
         {"type": "thumbnail", "source": "app://chat", "run_id": "run_003", "format": "raw"},
     )
 
+    payload = {"parent_ids": [parent["artifact_id"]], "relation": "derived"}
+    body = json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    headers = _auth_headers(
+        "POST",
+        f"/artifacts/{child['artifact_id']}/derive",
+        body=body,
+        content_type="application/json",
+    )
     response = client.post(
         f"/artifacts/{child['artifact_id']}/derive",
-        json={"parent_ids": [parent["artifact_id"]], "relation": "derived"},
-        headers=_headers(),
+        data=body,
+        headers=headers,
     )
     assert response.status_code == 200
 
-    response = client.get(f"/artifacts/{child['artifact_id']}", headers=_headers())
+    headers = _auth_headers("GET", f"/artifacts/{child['artifact_id']}")
+    response = client.get(f"/artifacts/{child['artifact_id']}", headers=headers)
     assert response.status_code == 200
     assert response.json()["parents"] == [parent["artifact_id"]]
 
@@ -152,7 +209,8 @@ def test_derive_and_manifest(client):
         },
     )
 
-    response = client.get("/sessions/sess_001/manifest", headers=_headers())
+    headers = _auth_headers("GET", "/sessions/sess_001/manifest")
+    response = client.get("/sessions/sess_001/manifest", headers=headers)
     assert response.status_code == 200
     data = response.json()
     assert data["count"] == 1
@@ -167,6 +225,6 @@ def test_owner_isolation(client):
     )
     response = client.get(
         f"/artifacts/{created['artifact_id']}",
-        headers=_headers("user_b"),
+        headers=_auth_headers("GET", f"/artifacts/{created['artifact_id']}", user_id="user_b"),
     )
     assert response.status_code == 403

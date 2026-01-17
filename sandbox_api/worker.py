@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
+import os
 from datetime import datetime, timezone
-from typing import Any
+from pathlib import Path
+from typing import Any, Callable
+from uuid import uuid4
 
+from playwright.sync_api import sync_playwright
+
+from .artifacts import ArtifactRecord, ArtifactRepository, ArtifactStore
 from .dashboard import save_dashboard_payload
 from .database import init_db, engine
 from .jobs import CommandJob, DashboardUpdateJob, ProvisionJob, parse_job
@@ -16,10 +23,12 @@ from .storage import SandboxRepository
 
 try:
     from run_artifact import (
+        BrowserRunner,
         RuntimeConfig,
         record_session,
         replay_session,
         run_artifact as run_browser_artifact,
+        update_overlay,
     )
 except Exception as exc:  # noqa: BLE001
     raise RuntimeError(f"Failed to import run_artifact helpers: {exc}")
@@ -49,6 +58,244 @@ def build_runtime_config(
         cdp_endpoint=cdp_endpoint,
         log_emitter=log_emitter,
     )
+
+def _ensure_dir(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+
+
+def _safe_filename(name: str) -> str:
+    safe = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in name)
+    return safe.strip("_") or "screenshot"
+
+
+def _register_screenshot(
+    repository: ArtifactRepository,
+    store: ArtifactStore,
+    *,
+    owner_id: str,
+    sandbox_id: str,
+    run_id: str,
+    file_path: Path,
+    filename: str,
+) -> ArtifactRecord:
+    now = datetime.now(timezone.utc)
+    record = ArtifactRecord(
+        artifact_id=f"art_{uuid4().hex[:12]}",
+        owner_id=owner_id,
+        session_id=None,
+        sandbox_id=sandbox_id,
+        artifact_type="screenshot",
+        source="steps",
+        run_id=run_id,
+        volatility=None,
+        artifact_format="png",
+        created_at=now,
+        updated_at=now,
+        size_bytes=None,
+        mime_type="image/png",
+        filename=filename,
+        checksum_sha256=None,
+        tags=["steps"],
+        sensitivity=None,
+        attributes=None,
+        blob_path=None,
+    )
+    created = repository.create(record)
+    size_bytes = file_path.stat().st_size
+    hasher = hashlib.sha256()
+    with file_path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(8192), b""):
+            hasher.update(chunk)
+    updated = repository.update_blob(
+        created.artifact_id,
+        blob_path=str(file_path.resolve()),
+        size_bytes=size_bytes,
+        checksum_sha256=hasher.hexdigest(),
+        mime_type="image/png",
+    )
+    return updated or created
+
+
+def _register_text_artifact(
+    repository: ArtifactRepository,
+    *,
+    owner_id: str,
+    sandbox_id: str,
+    run_id: str,
+    file_path: Path,
+    filename: str,
+    artifact_format: str,
+    mime_type: str,
+) -> ArtifactRecord:
+    now = datetime.now(timezone.utc)
+    record = ArtifactRecord(
+        artifact_id=f"art_{uuid4().hex[:12]}",
+        owner_id=owner_id,
+        session_id=None,
+        sandbox_id=sandbox_id,
+        artifact_type="dom_snapshot",
+        source="steps",
+        run_id=run_id,
+        volatility=None,
+        artifact_format=artifact_format,
+        created_at=now,
+        updated_at=now,
+        size_bytes=None,
+        mime_type=mime_type,
+        filename=filename,
+        checksum_sha256=None,
+        tags=["steps", "dom_snapshot"],
+        sensitivity=None,
+        attributes=None,
+        blob_path=None,
+    )
+    created = repository.create(record)
+    size_bytes = file_path.stat().st_size
+    hasher = hashlib.sha256()
+    with file_path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(8192), b""):
+            hasher.update(chunk)
+    updated = repository.update_blob(
+        created.artifact_id,
+        blob_path=str(file_path.resolve()),
+        size_bytes=size_bytes,
+        checksum_sha256=hasher.hexdigest(),
+        mime_type=mime_type,
+    )
+    return updated or created
+
+
+def _run_steps(
+    cfg: RuntimeConfig,
+    request: StepsRequest,
+    *,
+    command_id: str,
+    record: SandboxRecord,
+    artifact_repo: ArtifactRepository,
+    artifact_store: ArtifactStore,
+    emit_event: Callable[[dict[str, Any]], None],
+    log: Callable[[str], None],
+) -> dict[str, Any]:
+    base_dir = Path(record.artifacts_path or str(artifact_store.root)) / "steps" / command_id
+    _ensure_dir(base_dir)
+    artifact_ids: list[str] = []
+
+    with sync_playwright() as playwright:
+        browser, context, page = BrowserRunner(cfg, log).attach(playwright)
+        for index, step in enumerate(request.steps, start=1):
+            step_label = f"{index:02d}_{step.action}"
+            log(f"Step {index}: {step.action}")
+            update_overlay(page, step.action, step.dict())
+            timeout = step.timeout_ms or 30000
+            if step.action == "goto":
+                page.goto(step.url, wait_until="domcontentloaded", timeout=timeout)
+            elif step.action == "click":
+                page.click(step.selector, timeout=timeout)
+            elif step.action == "type":
+                if step.delay_ms:
+                    page.type(step.selector, step.text, delay=step.delay_ms, timeout=timeout)
+                else:
+                    page.fill(step.selector, step.text, timeout=timeout)
+            elif step.action == "wait":
+                page.wait_for_timeout(step.wait_ms)
+            elif step.action == "wait_for_selector":
+                page.wait_for_selector(step.selector, timeout=timeout)
+            elif step.action == "dom_snapshot":
+                pass
+            elif step.action == "screenshot":
+                pass
+            else:
+                raise RuntimeError(f"Unsupported step action: {step.action}")
+
+            should_capture = step.action == "screenshot" or request.screenshot_every_step
+            if should_capture:
+                name = _safe_filename(step.name or step_label)
+                filename = f"{name}.png"
+                file_path = base_dir / filename
+                page.screenshot(path=str(file_path))
+                artifact = _register_screenshot(
+                    artifact_repo,
+                    artifact_store,
+                    owner_id=record.owner_id,
+                    sandbox_id=record.sandbox_id,
+                    run_id=command_id,
+                    file_path=file_path,
+                    filename=filename,
+                )
+                artifact_ids.append(artifact.artifact_id)
+                emit_event(
+                    {
+                        "type": "artifact_ready",
+                        "artifact_id": artifact.artifact_id,
+                        "sandbox_id": record.sandbox_id,
+                        "command_id": command_id,
+                        "filename": filename,
+                        "artifact_type": "screenshot",
+                        "artifact_format": "png",
+                        "timestamp": _now_iso(),
+                    }
+                )
+
+            if step.action == "dom_snapshot":
+                name = _safe_filename(step.name or step_label)
+                if step.snapshot_format == "a11y_json":
+                    root = page.query_selector(step.selector) if step.selector else None
+                    snapshot = page.accessibility.snapshot(root=root)
+                    content = json.dumps(snapshot or {}, ensure_ascii=True, indent=2)
+                    filename = f"{name}.json"
+                    file_path = base_dir / filename
+                    file_path.write_text(content, encoding="utf-8")
+                    artifact = _register_text_artifact(
+                        artifact_repo,
+                        owner_id=record.owner_id,
+                        sandbox_id=record.sandbox_id,
+                        run_id=command_id,
+                        file_path=file_path,
+                        filename=filename,
+                        artifact_format="json",
+                        mime_type="application/json",
+                    )
+                else:
+                    if step.selector:
+                        element = page.query_selector(step.selector)
+                        if not element:
+                            raise RuntimeError(f"Selector not found: {step.selector}")
+                        content = element.evaluate("el => el.outerHTML")
+                    else:
+                        content = page.content()
+                    filename = f"{name}.html"
+                    file_path = base_dir / filename
+                    file_path.write_text(content, encoding="utf-8")
+                    artifact = _register_text_artifact(
+                        artifact_repo,
+                        owner_id=record.owner_id,
+                        sandbox_id=record.sandbox_id,
+                        run_id=command_id,
+                        file_path=file_path,
+                        filename=filename,
+                        artifact_format="html",
+                        mime_type="text/html",
+                    )
+                artifact_ids.append(artifact.artifact_id)
+                emit_event(
+                    {
+                        "type": "artifact_ready",
+                        "artifact_id": artifact.artifact_id,
+                        "sandbox_id": record.sandbox_id,
+                        "command_id": command_id,
+                        "filename": filename,
+                        "artifact_type": artifact.artifact_type,
+                        "artifact_format": artifact.artifact_format,
+                        "timestamp": _now_iso(),
+                    }
+                )
+
+        try:
+            browser.close()
+        except Exception:
+            pass
+
+    return {"artifact_ids": artifact_ids}
 
 
 async def publish_event(rabbit: RabbitMQ, payload: dict[str, Any]) -> None:
@@ -163,6 +410,8 @@ async def handle_provision(
 async def handle_command(
     job: CommandJob,
     repository: SandboxRepository,
+    artifact_repo: ArtifactRepository,
+    artifact_store: ArtifactStore,
     rabbit: RabbitMQ,
 ) -> None:
     record = repository.get(job.sandbox_id)
@@ -210,6 +459,9 @@ async def handle_command(
             loop,
         )
 
+    def emit_event(payload: dict[str, Any]) -> None:
+        asyncio.run_coroutine_threadsafe(publish_event(rabbit, payload), loop)
+
     await publish_event(
         rabbit,
         {
@@ -249,6 +501,17 @@ async def handle_command(
                     interactive=bool(job.payload.interactive),
                 )
                 return {"session_id": job.payload.session_id}
+            if job.command == "steps":
+                return _run_steps(
+                    cfg,
+                    job.payload,
+                    command_id=job.command_id,
+                    record=record,
+                    artifact_repo=artifact_repo,
+                    artifact_store=artifact_store,
+                    emit_event=emit_event,
+                    log=log_emitter,
+                )
             raise RuntimeError(f"Unknown command: {job.command}")
 
         result = await loop.run_in_executor(None, runner)
@@ -310,6 +573,8 @@ async def handle_dashboard_update(
 async def handle_job(
     message,
     repository: SandboxRepository,
+    artifact_repo: ArtifactRepository,
+    artifact_store: ArtifactStore,
     provisioner,
     rabbit: RabbitMQ,
 ) -> None:
@@ -323,7 +588,7 @@ async def handle_job(
             await handle_provision(job, repository, provisioner, rabbit)
             return
         if isinstance(job, CommandJob):
-            await handle_command(job, repository, rabbit)
+            await handle_command(job, repository, artifact_repo, artifact_store, rabbit)
             return
         if isinstance(job, DashboardUpdateJob):
             await handle_dashboard_update(job, repository, rabbit)
@@ -335,12 +600,14 @@ async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     init_db()
     repository = SandboxRepository(engine)
+    artifact_repo = ArtifactRepository(engine)
+    artifact_store = ArtifactStore(Path(os.getenv("SANDBOX_ARTIFACTS_ROOT", "./artifacts")))
     provisioner = build_default_provisioner()
     rabbit = RabbitMQ()
     await rabbit.connect()
 
     async def handler(message) -> None:
-        await handle_job(message, repository, provisioner, rabbit)
+        await handle_job(message, repository, artifact_repo, artifact_store, provisioner, rabbit)
 
     await rabbit.consume_jobs(handler)
     logger.info("Worker listening for jobs.")

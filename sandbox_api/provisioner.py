@@ -138,6 +138,7 @@ class ChromiumContainerProvisioner:
         artifacts_mode: str,
         public_host: str,
         api_base_url: str,
+        bind_host: str = "127.0.0.1",
         shm_size: str = "2g",
         screen_width: str = "1920",
         screen_height: str = "1080",
@@ -150,6 +151,7 @@ class ChromiumContainerProvisioner:
         self.artifacts_mode = normalize_artifacts_mode(artifacts_mode)
         self.public_host = public_host.rstrip("/")
         self.api_base_url = api_base_url.rstrip("/")
+        self.bind_host = bind_host
         self.shm_size = shm_size
         self.screen_width = screen_width
         self.screen_height = screen_height
@@ -163,6 +165,7 @@ class ChromiumContainerProvisioner:
         artifacts_root = Path(os.getenv("SANDBOX_ARTIFACTS_ROOT", "./artifacts"))
         public_host = os.getenv("SANDBOX_PUBLIC_HOST", "http://localhost")
         api_base_url = os.getenv("API_BASE_URL", "http://localhost:8000")
+        bind_host = os.getenv("SANDBOX_BIND_HOST", "127.0.0.1")
         shm_size = os.getenv("SANDBOX_SHM_SIZE", "2g")
         screen_width = os.getenv("SANDBOX_SCREEN_WIDTH", "1920")
         screen_height = os.getenv("SANDBOX_SCREEN_HEIGHT", "1080")
@@ -177,6 +180,7 @@ class ChromiumContainerProvisioner:
             artifacts_mode=artifacts_mode,
             public_host=public_host,
             api_base_url=api_base_url,
+            bind_host=bind_host,
             shm_size=shm_size,
             screen_width=screen_width,
             screen_height=screen_height,
@@ -203,9 +207,9 @@ class ChromiumContainerProvisioner:
             "--name",
             container_name,
             "-p",
-            f"{http_port}:8080",
+            f"{self.bind_host}:{http_port}:8080",
             "-p",
-            f"{cdp_port}:9222",
+            f"{self.bind_host}:{cdp_port}:9222",
             "--shm-size",
             self.shm_size,
             "-e",

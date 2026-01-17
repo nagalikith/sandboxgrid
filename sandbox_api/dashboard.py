@@ -6,10 +6,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse
 
 from .dashboard_models import DashboardPayload
+from .internal_auth import internal_auth_dependency
 from .jobs import DashboardUpdateJob
 from .models import SandboxRecord
 from .orchestrator import SandboxOrchestrator
@@ -54,16 +55,11 @@ _DASHBOARD_PATH = Path(__file__).with_name("dashboard.html")
 
 def build_dashboard_router(orchestrator: SandboxOrchestrator, rabbit: RabbitMQ) -> APIRouter:
     router = APIRouter(prefix="/sandboxes/{sandbox_id}/dashboard", tags=["dashboard"])
-
-    async def get_agent_id(
-        x_agent_id: str | None = Header(default=None),
-        agent_id: str | None = Query(default=None),
-    ) -> str:
-        return x_agent_id or agent_id or "anonymous"
+    require_internal_auth = internal_auth_dependency()
 
     async def get_sandbox(
         sandbox_id: str,
-        agent_id: str = Depends(get_agent_id),
+        agent_id: str = Depends(require_internal_auth),
     ) -> SandboxRecord:
         record = await orchestrator.get(sandbox_id)
         if not record:

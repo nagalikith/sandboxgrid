@@ -4,7 +4,7 @@ from typing import Any, Literal, Union
 
 from pydantic import BaseModel, Field, root_validator
 
-from .command_models import RecordRequest, ReplayRequest, RunBrowserRequest
+from .command_models import RecordRequest, ReplayRequest, RunBrowserRequest, StepsRequest
 from .dashboard_models import DashboardPayload
 from .models import SandboxRequest
 
@@ -23,7 +23,7 @@ class ProvisionJob(JobBase):
     request: SandboxRequest
 
 
-CommandPayload = Union[RunBrowserRequest, RecordRequest, ReplayRequest]
+CommandPayload = Union[RunBrowserRequest, RecordRequest, ReplayRequest, StepsRequest]
 
 
 class CommandJob(JobBase):
@@ -31,7 +31,7 @@ class CommandJob(JobBase):
     sandbox_id: str
     owner_id: str
     command_id: str
-    command: Literal["run_browser", "record", "replay"]
+    command: Literal["run_browser", "record", "replay", "steps"]
     payload: CommandPayload
 
     @root_validator(pre=True)
@@ -44,6 +44,8 @@ class CommandJob(JobBase):
             values["payload"] = RecordRequest.parse_obj(payload)
         elif command == "replay":
             values["payload"] = ReplayRequest.parse_obj(payload)
+        elif command == "steps":
+            values["payload"] = StepsRequest.parse_obj(payload)
         else:
             raise ValueError(f"Unsupported command type: {command}")
         return values
