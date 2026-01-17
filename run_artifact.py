@@ -57,10 +57,20 @@ class BrowserRunner:
         self.cfg = cfg
         self.log = log
 
-    def attach(self, playwright):
+    def attach(self, playwright, storage_state_path: Optional[str] = None):
         browser = playwright.chromium.connect_over_cdp(self.cfg.cdp_endpoint)
-        context = browser.contexts[0]
-        page = context.pages[0] if context.pages else context.new_page()
+        context = None
+        page = None
+        if storage_state_path:
+            try:
+                context = browser.new_context(storage_state=storage_state_path)
+                page = context.new_page()
+            except Exception:
+                context = None
+                page = None
+        if context is None:
+            context = browser.contexts[0] if browser.contexts else browser.new_context()
+            page = context.pages[0] if context.pages else context.new_page()
         try:
             page.bring_to_front()
         except Exception:
@@ -500,7 +510,13 @@ class SessionReplayer:
         except Exception as e:
             self.log(f"Error executing action {action_type}: {str(e)}")
 
-def record_session(cfg: RuntimeConfig, url: str, duration: int = 30, interactive: bool = False):
+def record_session(
+    cfg: RuntimeConfig,
+    url: str,
+    duration: int = 30,
+    interactive: bool = False,
+    storage_state_path: Optional[str] = None,
+):
     """Record a new browser session"""
     recorder = SessionRecorder(cfg)
     log = recorder.log
@@ -508,7 +524,7 @@ def record_session(cfg: RuntimeConfig, url: str, duration: int = 30, interactive
     log(f"Starting session recording: {recorder.session_id}")
     
     with sync_playwright() as p:
-        browser, context, page = BrowserRunner(cfg, log).attach(p)
+        browser, context, page = BrowserRunner(cfg, log).attach(p, storage_state_path=storage_state_path)
         
         # Record initial navigation
         recorder.record_action("navigate", {"url": url})
@@ -568,12 +584,18 @@ def record_session(cfg: RuntimeConfig, url: str, duration: int = 30, interactive
         
         return recorder.session_id
 
-def replay_session(cfg: RuntimeConfig, session_id: str, speed: float = 1.0, interactive: bool = False):
+def replay_session(
+    cfg: RuntimeConfig,
+    session_id: str,
+    speed: float = 1.0,
+    interactive: bool = False,
+    storage_state_path: Optional[str] = None,
+):
     """Replay a previously recorded session"""
     replayer = SessionReplayer(cfg, session_id)
     
     with sync_playwright() as p:
-        browser, context, page = BrowserRunner(cfg, replayer.log).attach(p)
+        browser, context, page = BrowserRunner(cfg, replayer.log).attach(p, storage_state_path=storage_state_path)
         
         replayer.replay(page, speed)
         
@@ -585,13 +607,13 @@ def replay_session(cfg: RuntimeConfig, session_id: str, speed: float = 1.0, inte
     
     replayer.log(f"Replay complete: {session_id}")
 
-def interactive_mode(cfg: RuntimeConfig, url: str = None):
+def interactive_mode(cfg: RuntimeConfig, url: str = None, storage_state_path: Optional[str] = None):
     """Start browser in interactive mode"""
     log = make_logger(cfg)
     log("Starting interactive browser control")
     
     with sync_playwright() as p:
-        browser, context, page = BrowserRunner(cfg, log).attach(p)
+        browser, context, page = BrowserRunner(cfg, log).attach(p, storage_state_path=storage_state_path)
         
         if url:
             log(f"Navigating to {url}")
@@ -636,7 +658,12 @@ def list_sessions(cfg: RuntimeConfig):
     
     return sessions
 
-def run_artifact(cfg: RuntimeConfig, url: str, interactive: bool = False):
+def run_artifact(
+    cfg: RuntimeConfig,
+    url: str,
+    interactive: bool = False,
+    storage_state_path: Optional[str] = None,
+):
     """Original functionality - run a single artifact"""
     artifact_id = str(uuid.uuid4())
     screenshot_path = os.path.join(cfg.artifacts_dir, f"{artifact_id}.png")
@@ -646,7 +673,7 @@ def run_artifact(cfg: RuntimeConfig, url: str, interactive: bool = False):
     log(f"connecting to chromium via CDP")
 
     with sync_playwright() as p:
-        browser, context, page = BrowserRunner(cfg, log).attach(p)
+        browser, context, page = BrowserRunner(cfg, log).attach(p, storage_state_path=storage_state_path)
 
         log(f"navigating to {url}")
         page.goto(url, wait_until="domcontentloaded")

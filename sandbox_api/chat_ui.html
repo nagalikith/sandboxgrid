@@ -1,0 +1,752 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Sandbox Agent UI</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #0b0f14;
+        --bg-panel: #121925;
+        --bg-panel-soft: #172234;
+        --bg-elevated: #1c2638;
+        --bg-chip: #233149;
+        --text: #f5f7fb;
+        --text-soft: #b7c0d1;
+        --text-muted: #7f8aa3;
+        --accent: #64b5f6;
+        --accent-strong: #2f80ed;
+        --warning: #f6c453;
+        --danger: #f16a6a;
+        --success: #6fd39f;
+        --border: #29364d;
+        --shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+        --radius-lg: 18px;
+        --radius-md: 12px;
+        --radius-sm: 8px;
+        --font: "Space Grotesk", "Sora", "IBM Plex Sans", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: var(--font);
+        background: radial-gradient(circle at 10% 10%, rgba(100, 181, 246, 0.15), transparent 40%),
+          radial-gradient(circle at 90% 20%, rgba(246, 196, 83, 0.12), transparent 45%),
+          var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+      }
+
+      .app {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 24px 28px 32px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 20px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .brand-mark {
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #6fd39f, #64b5f6);
+        box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.15);
+      }
+
+      .brand h1 {
+        margin: 0;
+        font-size: 18px;
+        letter-spacing: 0.4px;
+      }
+
+      .topbar-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .select {
+        background: var(--bg-panel);
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 8px 12px;
+        border-radius: 10px;
+        font-size: 13px;
+      }
+
+      .pill {
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: var(--bg-chip);
+        font-size: 12px;
+        color: var(--text-soft);
+        border: 1px solid transparent;
+      }
+
+      .pill.active {
+        background: rgba(100, 181, 246, 0.15);
+        color: var(--accent);
+        border-color: rgba(100, 181, 246, 0.4);
+      }
+
+      .button {
+        padding: 8px 14px;
+        border-radius: 10px;
+        border: 1px solid transparent;
+        background: var(--accent-strong);
+        color: var(--text);
+        font-weight: 600;
+        cursor: pointer;
+        font-size: 13px;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .button.secondary {
+        background: var(--bg-panel);
+        border-color: var(--border);
+        color: var(--text-soft);
+      }
+
+      .button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 10px 18px rgba(47, 128, 237, 0.2);
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(320px, 1fr) minmax(380px, 520px);
+        gap: 24px;
+      }
+
+      .panel {
+        background: var(--bg-panel);
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .panel-header {
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .panel-header h2 {
+        font-size: 15px;
+        margin: 0;
+      }
+
+      .panel-body {
+        padding: 18px 20px 22px;
+      }
+
+      .chat-thread {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .message {
+        display: flex;
+        gap: 12px;
+      }
+
+      .message .avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
+        background: var(--bg-chip);
+        display: grid;
+        place-items: center;
+        color: var(--text-soft);
+        font-size: 12px;
+      }
+
+      .message .bubble {
+        padding: 12px 16px;
+        background: var(--bg-panel-soft);
+        border-radius: 16px;
+        border: 1px solid var(--border);
+        max-width: 80%;
+        line-height: 1.5;
+        font-size: 14px;
+      }
+
+      .message.user {
+        align-self: flex-end;
+        flex-direction: row-reverse;
+      }
+
+      .message.user .bubble {
+        background: rgba(100, 181, 246, 0.15);
+        border-color: rgba(100, 181, 246, 0.3);
+      }
+
+      .preview-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .chips {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+
+      .chip {
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: var(--bg-chip);
+        border: 1px solid var(--border);
+        color: var(--text-soft);
+        font-size: 12px;
+      }
+
+      .gallery {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 12px;
+      }
+
+      .gallery-card {
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        cursor: pointer;
+        transition: transform 0.2s ease, border-color 0.2s ease;
+        position: relative;
+      }
+
+      .gallery-card:hover {
+        transform: translateY(-2px);
+        border-color: rgba(100, 181, 246, 0.5);
+      }
+
+      .gallery-card img {
+        width: 100%;
+        border-radius: 10px;
+        display: block;
+        object-fit: cover;
+      }
+
+      .gallery-meta {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+
+      .gallery-tag {
+        background: rgba(100, 181, 246, 0.15);
+        color: var(--accent);
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+      }
+
+      .select-box {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: rgba(0, 0, 0, 0.4);
+        border-radius: 8px;
+        padding: 4px;
+      }
+
+      .select-box input {
+        width: 14px;
+        height: 14px;
+      }
+
+      .empty-state {
+        border: 1px dashed var(--border);
+        border-radius: var(--radius-md);
+        padding: 18px;
+        text-align: center;
+        color: var(--text-muted);
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      .skeleton-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 12px;
+      }
+
+      .skeleton-card {
+        height: 160px;
+        border-radius: 12px;
+        background: linear-gradient(120deg, #1b2639 30%, #24314a 50%, #1b2639 70%);
+        background-size: 200% 100%;
+        animation: shimmer 1.6s infinite;
+      }
+
+      @keyframes shimmer {
+        0% { background-position: 0% 50%; }
+        100% { background-position: 200% 50%; }
+      }
+
+      .modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(4, 6, 12, 0.7);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 50;
+      }
+
+      .modal.active {
+        display: flex;
+      }
+
+      .modal-content {
+        width: min(1100px, 92vw);
+        background: #0c111a;
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        box-shadow: var(--shadow);
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 0;
+        overflow: hidden;
+      }
+
+      .modal-media {
+        background: #0a0f17;
+        position: relative;
+        padding: 16px;
+      }
+
+      .modal-media img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        border-radius: 12px;
+        transform-origin: center;
+        cursor: grab;
+      }
+
+      .modal-aside {
+        padding: 18px;
+        background: #101827;
+        border-left: 1px solid var(--border);
+      }
+
+      .modal-aside h3 {
+        margin: 0 0 8px;
+      }
+
+      .modal-meta {
+        font-size: 12px;
+        color: var(--text-muted);
+        line-height: 1.6;
+      }
+
+      .modal-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 14px;
+      }
+
+      .modal-nav {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        display: flex;
+        gap: 6px;
+      }
+
+      .modal-nav button {
+        border: none;
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--text);
+        padding: 6px 10px;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      .compare-bar {
+        margin-top: 12px;
+        padding: 10px 12px;
+        background: rgba(111, 211, 159, 0.12);
+        border: 1px solid rgba(111, 211, 159, 0.35);
+        border-radius: 12px;
+        display: none;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 12px;
+      }
+
+      .compare-bar.active {
+        display: flex;
+      }
+
+      .compare-grid {
+        display: none;
+        padding: 16px;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 12px;
+      }
+
+      .compare-grid.active {
+        display: grid;
+      }
+
+      .compare-grid img {
+        width: 100%;
+        border-radius: 12px;
+        background: #0a0f17;
+      }
+
+      @media (max-width: 1100px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+
+        .modal-content {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <div class="topbar">
+        <div class="brand">
+          <div class="brand-mark"></div>
+          <h1>Sandbox Agent Ops</h1>
+        </div>
+        <div class="topbar-actions">
+          <select class="select">
+            <option>Dataset: Retail Growth</option>
+            <option>Dataset: SaaS KPI</option>
+            <option>Dataset: Marketing</option>
+          </select>
+          <div class="pill active">Sandbox</div>
+          <div class="pill">Staging</div>
+          <div class="pill">Prod</div>
+          <button class="button secondary">Rerun</button>
+          <button class="button">Refresh</button>
+        </div>
+      </div>
+
+      <div class="layout">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Conversation</h2>
+            <div class="preview-controls">
+              <span class="pill">Live</span>
+              <span class="pill">Streaming</span>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="chat-thread">
+              <div class="message">
+                <div class="avatar">SA</div>
+                <div class="bubble">
+                  I pulled the last 30 days of acquisition data. Here are the top
+                  segments and a quick anomaly scan.
+                </div>
+              </div>
+              <div class="message user">
+                <div class="avatar">YO</div>
+                <div class="bubble">
+                  Show me the outliers and a comparison of the top three campaigns.
+                </div>
+              </div>
+              <div class="message">
+                <div class="avatar">SA</div>
+                <div class="bubble">
+                  Here are the artifacts from the latest run. You can compare images
+                  side-by-side for the quarterly changes.
+                </div>
+              </div>
+              <div class="message">
+                <div class="avatar">SA</div>
+                <div class="bubble">
+                  Report status: complete. 6 artifacts available. 2 alerts flagged.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Preview Cards</h2>
+            <div class="preview-controls">
+              <span class="pill active">Artifacts</span>
+              <span class="pill">Logs</span>
+              <span class="pill">Snapshots</span>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="chips">
+              <div class="chip">Brand: Apex</div>
+              <div class="chip">Date: Last 30d</div>
+              <div class="chip">Type: Chart</div>
+              <div class="chip">Status: OK</div>
+            </div>
+
+            <div class="gallery" id="gallery">
+              <div class="gallery-card" data-title="Campaign A" data-tags="paid, q1" data-created="2024-06-11 09:32" data-source="sandbox" data-src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='500'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0%25' stop-color='%230b1220'/><stop offset='100%25' stop-color='%231b3a57'/></linearGradient></defs><rect width='800' height='500' fill='url(%23g)'/><text x='40' y='80' fill='%23e2e8f0' font-size='32' font-family='Space Grotesk, sans-serif'>Campaign A</text></svg>">
+                <div class="select-box"><input type="checkbox" /></div>
+                <img alt="Campaign A" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='500'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0%25' stop-color='%230b1220'/><stop offset='100%25' stop-color='%231b3a57'/></linearGradient></defs><rect width='800' height='500' fill='url(%23g)'/><text x='40' y='80' fill='%23e2e8f0' font-size='32' font-family='Space Grotesk, sans-serif'>Campaign A</text></svg>" />
+                <div class="gallery-meta">
+                  <span>Outlier lift</span>
+                  <span class="gallery-tag">Chart</span>
+                </div>
+              </div>
+              <div class="gallery-card" data-title="Campaign B" data-tags="organic, q1" data-created="2024-06-11 09:34" data-source="sandbox" data-src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='500'><defs><linearGradient id='g2' x1='0' y1='0' x2='1' y2='1'><stop offset='0%25' stop-color='%23141b2d'/><stop offset='100%25' stop-color='%232a4c3c'/></linearGradient></defs><rect width='800' height='500' fill='url(%23g2)'/><text x='40' y='80' fill='%23eaf7f0' font-size='32' font-family='Space Grotesk, sans-serif'>Campaign B</text></svg>">
+                <div class="select-box"><input type="checkbox" /></div>
+                <img alt="Campaign B" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='500'><defs><linearGradient id='g2' x1='0' y1='0' x2='1' y2='1'><stop offset='0%25' stop-color='%23141b2d'/><stop offset='100%25' stop-color='%232a4c3c'/></linearGradient></defs><rect width='800' height='500' fill='url(%23g2)'/><text x='40' y='80' fill='%23eaf7f0' font-size='32' font-family='Space Grotesk, sans-serif'>Campaign B</text></svg>" />
+                <div class="gallery-meta">
+                  <span>YoY delta</span>
+                  <span class="gallery-tag">Chart</span>
+                </div>
+              </div>
+              <div class="gallery-card" data-title="Campaign C" data-tags="partner, q1" data-created="2024-06-11 09:35" data-source="sandbox" data-src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='500'><defs><linearGradient id='g3' x1='0' y1='0' x2='1' y2='1'><stop offset='0%25' stop-color='%231b1427'/><stop offset='100%25' stop-color='%23421d3c'/></linearGradient></defs><rect width='800' height='500' fill='url(%23g3)'/><text x='40' y='80' fill='%23f3d8f3' font-size='32' font-family='Space Grotesk, sans-serif'>Campaign C</text></svg>">
+                <div class="select-box"><input type="checkbox" /></div>
+                <img alt="Campaign C" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='500'><defs><linearGradient id='g3' x1='0' y1='0' x2='1' y2='1'><stop offset='0%25' stop-color='%231b1427'/><stop offset='100%25' stop-color='%23421d3c'/></linearGradient></defs><rect width='800' height='500' fill='url(%23g3)'/><text x='40' y='80' fill='%23f3d8f3' font-size='32' font-family='Space Grotesk, sans-serif'>Campaign C</text></svg>" />
+                <div class="gallery-meta">
+                  <span>Conversion</span>
+                  <span class="gallery-tag">Chart</span>
+                </div>
+              </div>
+              <div class="gallery-card" data-title="Revenue Heatmap" data-tags="q1, pipeline" data-created="2024-06-11 09:36" data-source="sandbox" data-src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='500'><defs><linearGradient id='g4' x1='0' y1='0' x2='1' y2='1'><stop offset='0%25' stop-color='%23121a1f'/><stop offset='100%25' stop-color='%23203b4c'/></linearGradient></defs><rect width='800' height='500' fill='url(%23g4)'/><text x='40' y='80' fill='%23d4f0ff' font-size='32' font-family='Space Grotesk, sans-serif'>Revenue Heatmap</text></svg>">
+                <div class="select-box"><input type="checkbox" /></div>
+                <img alt="Revenue Heatmap" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='500'><defs><linearGradient id='g4' x1='0' y1='0' x2='1' y2='1'><stop offset='0%25' stop-color='%23121a1f'/><stop offset='100%25' stop-color='%23203b4c'/></linearGradient></defs><rect width='800' height='500' fill='url(%23g4)'/><text x='40' y='80' fill='%23d4f0ff' font-size='32' font-family='Space Grotesk, sans-serif'>Revenue Heatmap</text></svg>" />
+                <div class="gallery-meta">
+                  <span>Pipeline</span>
+                  <span class="gallery-tag">Map</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="compare-bar" id="compare-bar">
+              <span id="compare-count">0 selected</span>
+              <button class="button secondary" id="compare-open">Compare</button>
+            </div>
+
+            <div style="margin-top: 16px;">
+              <div class="empty-state">
+                No images found. Try narrowing by date or clearing filters.
+              </div>
+            </div>
+
+            <div style="margin-top: 16px;">
+              <div class="skeleton-grid">
+                <div class="skeleton-card"></div>
+                <div class="skeleton-card"></div>
+                <div class="skeleton-card"></div>
+                <div class="skeleton-card"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" id="modal">
+      <div class="modal-content">
+        <div class="modal-media">
+          <div class="modal-nav">
+            <button id="zoom-in">+</button>
+            <button id="zoom-out">-</button>
+            <button id="close-modal">Close</button>
+          </div>
+          <img id="modal-image" alt="Preview" />
+          <div class="compare-grid" id="compare-grid"></div>
+        </div>
+        <div class="modal-aside">
+          <h3 id="modal-title">Artifact</h3>
+          <div class="modal-meta" id="modal-meta"></div>
+          <div class="modal-actions">
+            <button class="button secondary" id="prev-btn">Prev</button>
+            <button class="button secondary" id="next-btn">Next</button>
+            <button class="button" id="download-btn">Download</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const cards = Array.from(document.querySelectorAll(".gallery-card"));
+      const modal = document.getElementById("modal");
+      const modalImage = document.getElementById("modal-image");
+      const modalTitle = document.getElementById("modal-title");
+      const modalMeta = document.getElementById("modal-meta");
+      const compareBar = document.getElementById("compare-bar");
+      const compareCount = document.getElementById("compare-count");
+      const compareGrid = document.getElementById("compare-grid");
+      const compareOpen = document.getElementById("compare-open");
+      const zoomIn = document.getElementById("zoom-in");
+      const zoomOut = document.getElementById("zoom-out");
+      const closeModal = document.getElementById("close-modal");
+      const prevBtn = document.getElementById("prev-btn");
+      const nextBtn = document.getElementById("next-btn");
+      const downloadBtn = document.getElementById("download-btn");
+
+      let currentIndex = 0;
+      let zoom = 1;
+      let panX = 0;
+      let panY = 0;
+      let dragging = false;
+      let lastX = 0;
+      let lastY = 0;
+
+      function updateModal(card) {
+        const src = card.dataset.src;
+        modalImage.src = src;
+        modalTitle.textContent = card.dataset.title || "Artifact";
+        modalMeta.innerHTML =
+          "Tags: " + (card.dataset.tags || "-") +
+          "<br/>Created: " + (card.dataset.created || "-") +
+          "<br/>Source: " + (card.dataset.source || "-");
+        resetZoom();
+      }
+
+      function resetZoom() {
+        zoom = 1;
+        panX = 0;
+        panY = 0;
+        modalImage.style.transform = "translate(0px, 0px) scale(1)";
+      }
+
+      function applyTransform() {
+        modalImage.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+      }
+
+      function openModal(index) {
+        currentIndex = index;
+        compareGrid.classList.remove("active");
+        modalImage.style.display = "block";
+        updateModal(cards[currentIndex]);
+        modal.classList.add("active");
+      }
+
+      function openCompare(selectedCards) {
+        modalImage.style.display = "none";
+        compareGrid.innerHTML = "";
+        selectedCards.forEach((card) => {
+          const img = document.createElement("img");
+          img.src = card.dataset.src;
+          img.alt = card.dataset.title || "Compare";
+          compareGrid.appendChild(img);
+        });
+        compareGrid.classList.add("active");
+        modalTitle.textContent = "Compare Mode";
+        modalMeta.textContent = "Side-by-side comparison";
+        modal.classList.add("active");
+      }
+
+      cards.forEach((card, idx) => {
+        card.addEventListener("click", (event) => {
+          if (event.target.tagName.toLowerCase() === "input") {
+            return;
+          }
+          openModal(idx);
+        });
+      });
+
+      prevBtn.addEventListener("click", () => {
+        currentIndex = (currentIndex - 1 + cards.length) % cards.length;
+        updateModal(cards[currentIndex]);
+      });
+
+      nextBtn.addEventListener("click", () => {
+        currentIndex = (currentIndex + 1) % cards.length;
+        updateModal(cards[currentIndex]);
+      });
+
+      zoomIn.addEventListener("click", () => {
+        zoom = Math.min(zoom + 0.2, 3);
+        applyTransform();
+      });
+
+      zoomOut.addEventListener("click", () => {
+        zoom = Math.max(zoom - 0.2, 1);
+        applyTransform();
+      });
+
+      modalImage.addEventListener("mousedown", (event) => {
+        dragging = true;
+        lastX = event.clientX;
+        lastY = event.clientY;
+        modalImage.style.cursor = "grabbing";
+      });
+
+      window.addEventListener("mouseup", () => {
+        dragging = false;
+        modalImage.style.cursor = "grab";
+      });
+
+      window.addEventListener("mousemove", (event) => {
+        if (!dragging) return;
+        const dx = event.clientX - lastX;
+        const dy = event.clientY - lastY;
+        panX += dx;
+        panY += dy;
+        lastX = event.clientX;
+        lastY = event.clientY;
+        applyTransform();
+      });
+
+      closeModal.addEventListener("click", () => {
+        modal.classList.remove("active");
+      });
+
+      downloadBtn.addEventListener("click", () => {
+        const link = document.createElement("a");
+        link.href = modalImage.src;
+        link.download = "artifact.png";
+        link.click();
+      });
+
+      function updateCompareBar() {
+        const selected = cards.filter((card) => card.querySelector("input").checked);
+        compareCount.textContent = `${selected.length} selected`;
+        compareBar.classList.toggle("active", selected.length >= 2 && selected.length <= 4);
+      }
+
+      cards.forEach((card) => {
+        const checkbox = card.querySelector("input");
+        checkbox.addEventListener("change", updateCompareBar);
+      });
+
+      compareOpen.addEventListener("click", () => {
+        const selected = cards.filter((card) => card.querySelector("input").checked);
+        if (selected.length < 2) return;
+        openCompare(selected);
+      });
+    </script>
+  </body>
+</html>

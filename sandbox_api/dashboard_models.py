@@ -28,6 +28,10 @@ class DashboardChart(BaseModel):
     type: Literal["line", "bar"] = "line"
     series: List[DashboardSeries] = Field(default_factory=list)
     unit: Optional[str] = None
+    variant: Optional[Literal["v1", "v2", "v3"]] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    background: Optional[str] = None
 
 
 class DashboardTable(BaseModel):
@@ -40,6 +44,10 @@ class DashboardPayload(BaseModel):
     title: Optional[str] = None
     subtitle: Optional[str] = None
     updated_at: Optional[str] = None
+    chart_variant: Optional[Literal["v1", "v2", "v3"]] = None
+    chart_width: Optional[int] = None
+    chart_height: Optional[int] = None
+    chart_background: Optional[str] = None
     metrics: List[DashboardMetric] = Field(default_factory=list)
     charts: List[DashboardChart] = Field(default_factory=list)
     tables: List[DashboardTable] = Field(default_factory=list)

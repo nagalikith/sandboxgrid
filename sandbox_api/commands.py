@@ -7,7 +7,14 @@ from enum import Enum
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from .command_models import RecordRequest, ReplayRequest, RunBrowserRequest, StepsRequest
+from .command_models import (
+    AgentStepsRequest,
+    CaptureProfileRequest,
+    RecordRequest,
+    ReplayRequest,
+    RunBrowserRequest,
+    StepsRequest,
+)
 from .internal_auth import internal_auth_dependency
 from .jobs import CommandJob
 from .models import SandboxRecord, SandboxStatus
@@ -180,6 +187,52 @@ def build_commands_router(orchestrator: SandboxOrchestrator, rabbit: RabbitMQ) -
             status=CommandStatus.queued,
             started_at=datetime.now(timezone.utc),
             message="Steps queued.",
+        )
+
+    @router.post("/agent", response_model=CommandReceipt, summary="Plan and execute agent steps")
+    async def run_agent(
+        sandbox_id: str,
+        payload: AgentStepsRequest,
+        record: SandboxRecord = Depends(get_sandbox),
+    ) -> CommandReceipt:
+        command_id = f"cmd_{uuid.uuid4().hex[:8]}"
+        await enqueue_command(
+            record,
+            command_id,
+            "agent",
+            payload.dict(exclude_none=True),
+            "Agent plan queued.",
+        )
+
+        return CommandReceipt(
+            command_id=command_id,
+            sandbox_id=record.sandbox_id,
+            status=CommandStatus.queued,
+            started_at=datetime.now(timezone.utc),
+            message="Agent plan queued.",
+        )
+
+    @router.post("/capture_profile", response_model=CommandReceipt, summary="Capture browser profile")
+    async def capture_profile(
+        sandbox_id: str,
+        payload: CaptureProfileRequest,
+        record: SandboxRecord = Depends(get_sandbox),
+    ) -> CommandReceipt:
+        command_id = f"cmd_{uuid.uuid4().hex[:8]}"
+        await enqueue_command(
+            record,
+            command_id,
+            "capture_profile",
+            payload.dict(exclude_none=True),
+            "Profile capture queued.",
+        )
+
+        return CommandReceipt(
+            command_id=command_id,
+            sandbox_id=record.sandbox_id,
+            status=CommandStatus.queued,
+            started_at=datetime.now(timezone.utc),
+            message="Profile capture queued.",
         )
 
     return router

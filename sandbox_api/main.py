@@ -13,6 +13,7 @@ from .commands import build_commands_router
 from .dashboard import build_dashboard_router
 from .database import init_db, engine
 from .events import event_bus, sse_format
+from .events_models import AgentEventPayload
 from .jobs import ProvisionJob
 from .internal_auth import internal_auth_dependency
 from .models import SandboxRequest, SandboxResponse, sandbox_response_from_record
@@ -81,11 +82,17 @@ app.include_router(artifacts_router)
 app.include_router(dashboard_router)
 
 _UI_PATH = Path(__file__).with_name("ui.html")
+_CHAT_UI_PATH = Path(__file__).with_name("chat_ui.html")
 
 
 @app.get("/ui", response_class=HTMLResponse)
 def sandbox_ui() -> HTMLResponse:
     return HTMLResponse(_UI_PATH.read_text(encoding="utf-8"))
+
+
+@app.get("/chat-ui", response_class=HTMLResponse)
+def chat_ui() -> HTMLResponse:
+    return HTMLResponse(_CHAT_UI_PATH.read_text(encoding="utf-8"))
 
 
 @app.on_event("startup")
@@ -140,3 +147,20 @@ async def sandbox_events(
             await event_bus.unsubscribe(sandbox_id, queue)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.post("/sandboxes/{sandbox_id}/events/agent", status_code=status.HTTP_202_ACCEPTED)
+async def publish_agent_event(
+    sandbox_id: str,
+    payload: AgentEventPayload,
+    agent_id: str = Depends(require_internal_auth),
+) -> dict:
+    record = await orchestrator.get(sandbox_id)
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sandbox not found.")
+    if record.owner_id != agent_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden.")
+    event = payload.dict()
+    event["sandbox_id"] = sandbox_id
+    await rabbitmq.publish_event(event)
+    return {"status": "queued"}

@@ -12,7 +12,9 @@ from uuid import uuid4
 
 from playwright.sync_api import sync_playwright
 
+from .agent_planner import plan_steps
 from .artifacts import ArtifactRecord, ArtifactRepository, ArtifactStore
+from .charts_renderer import render_dashboard_charts
 from .dashboard import save_dashboard_payload
 from .database import init_db, engine
 from .jobs import CommandJob, DashboardUpdateJob, ProvisionJob, parse_job
@@ -67,6 +69,293 @@ def _safe_filename(name: str) -> str:
     safe = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in name)
     return safe.strip("_") or "screenshot"
 
+
+def _resolve_profile_path(
+    artifact_repo: ArtifactRepository,
+    *,
+    record: SandboxRecord,
+    artifact_id: str | None,
+) -> str | None:
+    if not artifact_id:
+        return None
+    artifact = artifact_repo.get(artifact_id)
+    if not artifact:
+        raise RuntimeError(f"Profile artifact not found: {artifact_id}")
+    if artifact.owner_id != record.owner_id:
+        raise RuntimeError("Profile artifact ownership mismatch.")
+    if not artifact.blob_path:
+        raise RuntimeError("Profile artifact missing blob path.")
+    path = Path(artifact.blob_path)
+    if not path.exists():
+        raise RuntimeError("Profile artifact file missing.")
+    return str(path.resolve())
+
+
+def _truncate(value: str, limit: int) -> str:
+    if limit <= 0 or len(value) <= limit:
+        return value
+    return value[:limit]
+
+
+def _write_text(path: Path, content: str) -> None:
+    path.write_text(content, encoding="utf-8")
+
+
+def _capture_page_state(
+    page,
+    *,
+    base_dir: Path,
+    record: SandboxRecord,
+    run_id: str,
+    artifact_repo: ArtifactRepository,
+    emit_event: Callable[[dict[str, Any]], None],
+) -> tuple[dict[str, Any], list[str]]:
+    html = page.content()
+    try:
+        text = page.evaluate("() => document.body ? document.body.innerText : ''")
+    except Exception:
+        text = ""
+    try:
+        a11y = page.accessibility.snapshot()
+    except Exception:
+        a11y = {}
+    try:
+        forms = page.evaluate(
+            """
+            () => Array.from(document.querySelectorAll('form')).map((form) => {
+              const inputs = Array.from(form.querySelectorAll('input, textarea, select')).map((el) => {
+                const label = el.labels && el.labels.length ? el.labels[0].innerText : null;
+                return {
+                  tag: el.tagName.toLowerCase(),
+                  name: el.getAttribute('name'),
+                  id: el.id || null,
+                  type: el.getAttribute('type') || null,
+                  placeholder: el.getAttribute('placeholder'),
+                  label: label,
+                  aria_label: el.getAttribute('aria-label'),
+                  value_present: el.value ? true : false,
+                };
+              });
+              return {
+                id: form.id || null,
+                name: form.getAttribute('name'),
+                action: form.getAttribute('action'),
+                method: form.getAttribute('method'),
+                inputs: inputs,
+              };
+            })
+            """
+        )
+    except Exception:
+        forms = []
+
+    viewport = page.viewport_size or {}
+    state = {
+        "url": page.url,
+        "title": page.title(),
+        "viewport": viewport,
+        "visible_text": text,
+        "forms": forms,
+    }
+
+    state_dir = base_dir / "state"
+    _ensure_dir(state_dir)
+    base_name = _safe_filename(f"{run_id}_state")
+    html_path = state_dir / f"{base_name}.html"
+    text_path = state_dir / f"{base_name}.txt"
+    a11y_path = state_dir / f"{base_name}_a11y.json"
+    state_path = state_dir / f"{base_name}.json"
+
+    _write_text(html_path, html)
+    _write_text(text_path, text)
+    _write_text(a11y_path, json.dumps(a11y or {}, ensure_ascii=True, indent=2))
+    _write_text(state_path, json.dumps(state, ensure_ascii=True, indent=2))
+
+    artifact_ids: list[str] = []
+
+    html_artifact = _register_text_artifact(
+        artifact_repo,
+        owner_id=record.owner_id,
+        sandbox_id=record.sandbox_id,
+        run_id=run_id,
+        file_path=html_path,
+        filename=html_path.name,
+        artifact_format="html",
+        mime_type="text/html",
+        artifact_type="dom_snapshot",
+        tags=["page_state", "html"],
+    )
+    artifact_ids.append(html_artifact.artifact_id)
+    emit_event(
+        {
+            "type": "artifact_ready",
+            "artifact_id": html_artifact.artifact_id,
+            "sandbox_id": record.sandbox_id,
+            "command_id": run_id,
+            "filename": html_path.name,
+            "artifact_type": html_artifact.artifact_type,
+            "artifact_format": html_artifact.artifact_format,
+            "timestamp": _now_iso(),
+        }
+    )
+
+    text_artifact = _register_text_artifact(
+        artifact_repo,
+        owner_id=record.owner_id,
+        sandbox_id=record.sandbox_id,
+        run_id=run_id,
+        file_path=text_path,
+        filename=text_path.name,
+        artifact_format="txt",
+        mime_type="text/plain",
+        artifact_type="page_text",
+        tags=["page_state", "text"],
+    )
+    artifact_ids.append(text_artifact.artifact_id)
+    emit_event(
+        {
+            "type": "artifact_ready",
+            "artifact_id": text_artifact.artifact_id,
+            "sandbox_id": record.sandbox_id,
+            "command_id": run_id,
+            "filename": text_path.name,
+            "artifact_type": text_artifact.artifact_type,
+            "artifact_format": text_artifact.artifact_format,
+            "timestamp": _now_iso(),
+        }
+    )
+
+    a11y_artifact = _register_text_artifact(
+        artifact_repo,
+        owner_id=record.owner_id,
+        sandbox_id=record.sandbox_id,
+        run_id=run_id,
+        file_path=a11y_path,
+        filename=a11y_path.name,
+        artifact_format="json",
+        mime_type="application/json",
+        artifact_type="dom_snapshot",
+        tags=["page_state", "a11y"],
+    )
+    artifact_ids.append(a11y_artifact.artifact_id)
+    emit_event(
+        {
+            "type": "artifact_ready",
+            "artifact_id": a11y_artifact.artifact_id,
+            "sandbox_id": record.sandbox_id,
+            "command_id": run_id,
+            "filename": a11y_path.name,
+            "artifact_type": a11y_artifact.artifact_type,
+            "artifact_format": a11y_artifact.artifact_format,
+            "timestamp": _now_iso(),
+        }
+    )
+
+    state_artifact = _register_text_artifact(
+        artifact_repo,
+        owner_id=record.owner_id,
+        sandbox_id=record.sandbox_id,
+        run_id=run_id,
+        file_path=state_path,
+        filename=state_path.name,
+        artifact_format="json",
+        mime_type="application/json",
+        artifact_type="page_state",
+        tags=["page_state", "structured"],
+    )
+    artifact_ids.append(state_artifact.artifact_id)
+    emit_event(
+        {
+            "type": "artifact_ready",
+            "artifact_id": state_artifact.artifact_id,
+            "sandbox_id": record.sandbox_id,
+            "command_id": run_id,
+            "filename": state_path.name,
+            "artifact_type": state_artifact.artifact_type,
+            "artifact_format": state_artifact.artifact_format,
+            "timestamp": _now_iso(),
+        }
+    )
+
+    llm_dom_limit = int(os.getenv("LLM_DOM_CHAR_LIMIT", "40000"))
+    llm_text_limit = int(os.getenv("LLM_TEXT_CHAR_LIMIT", "20000"))
+    llm_a11y_limit = int(os.getenv("LLM_A11Y_CHAR_LIMIT", "40000"))
+    llm_context = {
+        "url": state["url"],
+        "title": state["title"],
+        "viewport": state["viewport"],
+        "visible_text": _truncate(text, llm_text_limit),
+        "forms": state["forms"],
+        "dom_html": _truncate(html, llm_dom_limit),
+        "a11y_tree": _truncate(json.dumps(a11y or {}, ensure_ascii=True), llm_a11y_limit),
+    }
+
+    return llm_context, artifact_ids
+
+
+def _build_locators(page, step) -> list:
+    locators = []
+    selectors: list[str] = []
+    if step.selector:
+        selectors.append(step.selector)
+    if step.selector_fallbacks:
+        selectors.extend(step.selector_fallbacks)
+    for selector in selectors:
+        locators.append(page.locator(selector))
+    if step.role:
+        try:
+            locators.append(page.get_by_role(step.role, name=step.role_name))
+        except Exception:
+            pass
+    if step.label:
+        try:
+            locators.append(page.get_by_label(step.label))
+        except Exception:
+            pass
+    if step.placeholder:
+        try:
+            locators.append(page.get_by_placeholder(step.placeholder))
+        except Exception:
+            pass
+    if step.target_text:
+        try:
+            locators.append(page.get_by_text(step.target_text))
+        except Exception:
+            pass
+    return locators
+
+
+def _perform_locator_action(page, step, action_name: str) -> None:
+    locators = _build_locators(page, step)
+    if not locators:
+        raise RuntimeError(f"No locators available for {action_name}.")
+    timeout = step.timeout_ms or 30000
+    retries = step.retries or int(os.getenv("SANDBOX_STEP_RETRIES", "1"))
+    last_exc: Exception | None = None
+    for attempt in range(retries):
+        for locator in locators:
+            try:
+                target = locator.first
+                target.wait_for(state="visible", timeout=timeout)
+                if action_name == "click":
+                    target.click(timeout=timeout)
+                elif action_name == "type":
+                    if step.delay_ms:
+                        target.type(step.text, delay=step.delay_ms, timeout=timeout)
+                    else:
+                        target.fill(step.text, timeout=timeout)
+                elif action_name == "wait_for_selector":
+                    target.wait_for(state="visible", timeout=timeout)
+                else:
+                    raise RuntimeError(f"Unsupported locator action: {action_name}")
+                return
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+        if attempt < retries - 1:
+            page.wait_for_timeout(300)
+    if last_exc:
+        raise last_exc
+    raise RuntimeError(f"Failed to perform {action_name}.")
 
 def _register_screenshot(
     repository: ArtifactRepository,
@@ -126,6 +415,9 @@ def _register_text_artifact(
     filename: str,
     artifact_format: str,
     mime_type: str,
+    artifact_type: str = "dom_snapshot",
+    tags: list[str] | None = None,
+    source: str = "steps",
 ) -> ArtifactRecord:
     now = datetime.now(timezone.utc)
     record = ArtifactRecord(
@@ -133,8 +425,8 @@ def _register_text_artifact(
         owner_id=owner_id,
         session_id=None,
         sandbox_id=sandbox_id,
-        artifact_type="dom_snapshot",
-        source="steps",
+        artifact_type=artifact_type,
+        source=source,
         run_id=run_id,
         volatility=None,
         artifact_format=artifact_format,
@@ -144,7 +436,7 @@ def _register_text_artifact(
         mime_type=mime_type,
         filename=filename,
         checksum_sha256=None,
-        tags=["steps", "dom_snapshot"],
+        tags=tags or ["steps", artifact_type],
         sensitivity=None,
         attributes=None,
         blob_path=None,
@@ -165,6 +457,141 @@ def _register_text_artifact(
     return updated or created
 
 
+def _execute_steps(
+    page,
+    request: StepsRequest,
+    *,
+    command_id: str,
+    record: SandboxRecord,
+    base_dir: Path,
+    artifact_repo: ArtifactRepository,
+    artifact_store: ArtifactStore,
+    emit_event: Callable[[dict[str, Any]], None],
+    log: Callable[[str], None],
+) -> list[str]:
+    artifact_ids: list[str] = []
+    for index, step in enumerate(request.steps, start=1):
+        step_label = f"{index:02d}_{step.action}"
+        log(f"Step {index}: {step.action}")
+        update_overlay(page, step.action, step.dict())
+        timeout = step.timeout_ms or 30000
+        if step.action == "goto":
+            page.goto(step.url, wait_until="domcontentloaded", timeout=timeout)
+        elif step.action == "click":
+            _perform_locator_action(page, step, "click")
+        elif step.action == "type":
+            _perform_locator_action(page, step, "type")
+        elif step.action == "wait":
+            page.wait_for_timeout(step.wait_ms)
+        elif step.action == "wait_for_selector":
+            _perform_locator_action(page, step, "wait_for_selector")
+        elif step.action == "dom_snapshot":
+            pass
+        elif step.action == "screenshot":
+            pass
+        elif step.action == "page_state":
+            llm_context, state_artifacts = _capture_page_state(
+                page,
+                base_dir=base_dir,
+                record=record,
+                run_id=command_id,
+                artifact_repo=artifact_repo,
+                emit_event=emit_event,
+            )
+            artifact_ids.extend(state_artifacts)
+            log(f"Captured page state (context keys: {', '.join(llm_context.keys())})")
+        else:
+            raise RuntimeError(f"Unsupported step action: {step.action}")
+
+        should_capture = step.action == "screenshot" or request.screenshot_every_step
+        if should_capture:
+            name = _safe_filename(step.name or step_label)
+            filename = f"{name}.png"
+            file_path = base_dir / filename
+            page.screenshot(path=str(file_path))
+            artifact = _register_screenshot(
+                artifact_repo,
+                artifact_store,
+                owner_id=record.owner_id,
+                sandbox_id=record.sandbox_id,
+                run_id=command_id,
+                file_path=file_path,
+                filename=filename,
+            )
+            artifact_ids.append(artifact.artifact_id)
+            emit_event(
+                {
+                    "type": "artifact_ready",
+                    "artifact_id": artifact.artifact_id,
+                    "sandbox_id": record.sandbox_id,
+                    "command_id": command_id,
+                    "filename": filename,
+                    "artifact_type": "screenshot",
+                    "artifact_format": "png",
+                    "timestamp": _now_iso(),
+                }
+            )
+
+        if step.action == "dom_snapshot":
+            name = _safe_filename(step.name or step_label)
+            if step.snapshot_format == "a11y_json":
+                root = page.query_selector(step.selector) if step.selector else None
+                snapshot = page.accessibility.snapshot(root=root)
+                content = json.dumps(snapshot or {}, ensure_ascii=True, indent=2)
+                filename = f"{name}.json"
+                file_path = base_dir / filename
+                file_path.write_text(content, encoding="utf-8")
+                artifact = _register_text_artifact(
+                    artifact_repo,
+                    owner_id=record.owner_id,
+                    sandbox_id=record.sandbox_id,
+                    run_id=command_id,
+                    file_path=file_path,
+                    filename=filename,
+                    artifact_format="json",
+                    mime_type="application/json",
+                    artifact_type="dom_snapshot",
+                    tags=["steps", "dom_snapshot", "a11y"],
+                )
+            else:
+                if step.selector:
+                    element = page.query_selector(step.selector)
+                    if not element:
+                        raise RuntimeError(f"Selector not found: {step.selector}")
+                    content = element.evaluate("el => el.outerHTML")
+                else:
+                    content = page.content()
+                filename = f"{name}.html"
+                file_path = base_dir / filename
+                file_path.write_text(content, encoding="utf-8")
+                artifact = _register_text_artifact(
+                    artifact_repo,
+                    owner_id=record.owner_id,
+                    sandbox_id=record.sandbox_id,
+                    run_id=command_id,
+                    file_path=file_path,
+                    filename=filename,
+                    artifact_format="html",
+                    mime_type="text/html",
+                    artifact_type="dom_snapshot",
+                    tags=["steps", "dom_snapshot", "html"],
+                )
+            artifact_ids.append(artifact.artifact_id)
+            emit_event(
+                {
+                    "type": "artifact_ready",
+                    "artifact_id": artifact.artifact_id,
+                    "sandbox_id": record.sandbox_id,
+                    "command_id": command_id,
+                    "filename": filename,
+                    "artifact_type": artifact.artifact_type,
+                    "artifact_format": artifact.artifact_format,
+                    "timestamp": _now_iso(),
+                }
+            )
+    return artifact_ids
+
+
 def _run_steps(
     cfg: RuntimeConfig,
     request: StepsRequest,
@@ -175,120 +602,123 @@ def _run_steps(
     artifact_store: ArtifactStore,
     emit_event: Callable[[dict[str, Any]], None],
     log: Callable[[str], None],
+    base_dir: Path | None = None,
 ) -> dict[str, Any]:
-    base_dir = Path(record.artifacts_path or str(artifact_store.root)) / "steps" / command_id
+    base_dir = base_dir or Path(record.artifacts_path or str(artifact_store.root)) / "steps" / command_id
     _ensure_dir(base_dir)
-    artifact_ids: list[str] = []
+    profile_path = _resolve_profile_path(
+        artifact_repo,
+        record=record,
+        artifact_id=getattr(request, "profile_artifact_id", None),
+    )
 
     with sync_playwright() as playwright:
-        browser, context, page = BrowserRunner(cfg, log).attach(playwright)
-        for index, step in enumerate(request.steps, start=1):
-            step_label = f"{index:02d}_{step.action}"
-            log(f"Step {index}: {step.action}")
-            update_overlay(page, step.action, step.dict())
-            timeout = step.timeout_ms or 30000
-            if step.action == "goto":
-                page.goto(step.url, wait_until="domcontentloaded", timeout=timeout)
-            elif step.action == "click":
-                page.click(step.selector, timeout=timeout)
-            elif step.action == "type":
-                if step.delay_ms:
-                    page.type(step.selector, step.text, delay=step.delay_ms, timeout=timeout)
-                else:
-                    page.fill(step.selector, step.text, timeout=timeout)
-            elif step.action == "wait":
-                page.wait_for_timeout(step.wait_ms)
-            elif step.action == "wait_for_selector":
-                page.wait_for_selector(step.selector, timeout=timeout)
-            elif step.action == "dom_snapshot":
-                pass
-            elif step.action == "screenshot":
-                pass
-            else:
-                raise RuntimeError(f"Unsupported step action: {step.action}")
+        browser, context, page = BrowserRunner(cfg, log).attach(playwright, storage_state_path=profile_path)
+        artifact_ids = _execute_steps(
+            page,
+            request,
+            command_id=command_id,
+            record=record,
+            base_dir=base_dir,
+            artifact_repo=artifact_repo,
+            artifact_store=artifact_store,
+            emit_event=emit_event,
+            log=log,
+        )
+        try:
+            browser.close()
+        except Exception:
+            pass
 
-            should_capture = step.action == "screenshot" or request.screenshot_every_step
-            if should_capture:
-                name = _safe_filename(step.name or step_label)
-                filename = f"{name}.png"
-                file_path = base_dir / filename
-                page.screenshot(path=str(file_path))
-                artifact = _register_screenshot(
-                    artifact_repo,
-                    artifact_store,
-                    owner_id=record.owner_id,
-                    sandbox_id=record.sandbox_id,
-                    run_id=command_id,
-                    file_path=file_path,
-                    filename=filename,
-                )
-                artifact_ids.append(artifact.artifact_id)
-                emit_event(
-                    {
-                        "type": "artifact_ready",
-                        "artifact_id": artifact.artifact_id,
-                        "sandbox_id": record.sandbox_id,
-                        "command_id": command_id,
-                        "filename": filename,
-                        "artifact_type": "screenshot",
-                        "artifact_format": "png",
-                        "timestamp": _now_iso(),
-                    }
-                )
+    return {"artifact_ids": artifact_ids}
 
-            if step.action == "dom_snapshot":
-                name = _safe_filename(step.name or step_label)
-                if step.snapshot_format == "a11y_json":
-                    root = page.query_selector(step.selector) if step.selector else None
-                    snapshot = page.accessibility.snapshot(root=root)
-                    content = json.dumps(snapshot or {}, ensure_ascii=True, indent=2)
-                    filename = f"{name}.json"
-                    file_path = base_dir / filename
-                    file_path.write_text(content, encoding="utf-8")
-                    artifact = _register_text_artifact(
-                        artifact_repo,
-                        owner_id=record.owner_id,
-                        sandbox_id=record.sandbox_id,
-                        run_id=command_id,
-                        file_path=file_path,
-                        filename=filename,
-                        artifact_format="json",
-                        mime_type="application/json",
-                    )
-                else:
-                    if step.selector:
-                        element = page.query_selector(step.selector)
-                        if not element:
-                            raise RuntimeError(f"Selector not found: {step.selector}")
-                        content = element.evaluate("el => el.outerHTML")
-                    else:
-                        content = page.content()
-                    filename = f"{name}.html"
-                    file_path = base_dir / filename
-                    file_path.write_text(content, encoding="utf-8")
-                    artifact = _register_text_artifact(
-                        artifact_repo,
-                        owner_id=record.owner_id,
-                        sandbox_id=record.sandbox_id,
-                        run_id=command_id,
-                        file_path=file_path,
-                        filename=filename,
-                        artifact_format="html",
-                        mime_type="text/html",
-                    )
-                artifact_ids.append(artifact.artifact_id)
-                emit_event(
-                    {
-                        "type": "artifact_ready",
-                        "artifact_id": artifact.artifact_id,
-                        "sandbox_id": record.sandbox_id,
-                        "command_id": command_id,
-                        "filename": filename,
-                        "artifact_type": artifact.artifact_type,
-                        "artifact_format": artifact.artifact_format,
-                        "timestamp": _now_iso(),
-                    }
-                )
+
+def _run_agent(
+    cfg: RuntimeConfig,
+    request,
+    *,
+    command_id: str,
+    record: SandboxRecord,
+    artifact_repo: ArtifactRepository,
+    artifact_store: ArtifactStore,
+    emit_event: Callable[[dict[str, Any]], None],
+    log: Callable[[str], None],
+) -> dict[str, Any]:
+    base_dir = Path(record.artifacts_path or str(artifact_store.root)) / "agent" / command_id
+    _ensure_dir(base_dir)
+    artifact_ids: list[str] = []
+    profile_path = _resolve_profile_path(
+        artifact_repo,
+        record=record,
+        artifact_id=getattr(request, "profile_artifact_id", None),
+    )
+
+    with sync_playwright() as playwright:
+        browser, context, page = BrowserRunner(cfg, log).attach(playwright, storage_state_path=profile_path)
+        llm_context: dict[str, Any] = {}
+        if request.capture_state:
+            llm_context, state_artifacts = _capture_page_state(
+                page,
+                base_dir=base_dir,
+                record=record,
+                run_id=command_id,
+                artifact_repo=artifact_repo,
+                emit_event=emit_event,
+            )
+            artifact_ids.extend(state_artifacts)
+
+        planned = plan_steps(
+            request=request,
+            page_context=llm_context,
+            log=log,
+        )
+
+        plan_payload = {
+            "task": request.task,
+            "steps": [step.dict(exclude_none=True, by_alias=True) for step in planned.steps],
+            "screenshot_every_step": planned.screenshot_every_step,
+        }
+        plan_path = base_dir / "agent_plan.json"
+        _write_text(plan_path, json.dumps(plan_payload, ensure_ascii=True, indent=2))
+        plan_artifact = _register_text_artifact(
+            artifact_repo,
+            owner_id=record.owner_id,
+            sandbox_id=record.sandbox_id,
+            run_id=command_id,
+            file_path=plan_path,
+            filename=plan_path.name,
+            artifact_format="json",
+            mime_type="application/json",
+            artifact_type="agent_plan",
+            tags=["agent_plan"],
+        )
+        artifact_ids.append(plan_artifact.artifact_id)
+        emit_event(
+            {
+                "type": "artifact_ready",
+                "artifact_id": plan_artifact.artifact_id,
+                "sandbox_id": record.sandbox_id,
+                "command_id": command_id,
+                "filename": plan_path.name,
+                "artifact_type": plan_artifact.artifact_type,
+                "artifact_format": plan_artifact.artifact_format,
+                "timestamp": _now_iso(),
+            }
+        )
+
+        artifact_ids.extend(
+            _execute_steps(
+                page,
+                planned,
+                command_id=command_id,
+                record=record,
+                base_dir=base_dir,
+                artifact_repo=artifact_repo,
+                artifact_store=artifact_store,
+                emit_event=emit_event,
+                log=log,
+            )
+        )
 
         try:
             browser.close()
@@ -296,6 +726,61 @@ def _run_steps(
             pass
 
     return {"artifact_ids": artifact_ids}
+
+
+def _capture_profile(
+    cfg: RuntimeConfig,
+    request,
+    *,
+    command_id: str,
+    record: SandboxRecord,
+    artifact_repo: ArtifactRepository,
+    artifact_store: ArtifactStore,
+    emit_event: Callable[[dict[str, Any]], None],
+    log: Callable[[str], None],
+) -> dict[str, Any]:
+    base_dir = Path(record.artifacts_path or str(artifact_store.root)) / "profiles" / command_id
+    _ensure_dir(base_dir)
+
+    name = _safe_filename(request.name or f"profile_{command_id}")
+    filename = f"{name}.json"
+    file_path = base_dir / filename
+
+    with sync_playwright() as playwright:
+        browser, context, page = BrowserRunner(cfg, log).attach(playwright)
+        context.storage_state(path=str(file_path))
+        try:
+            browser.close()
+        except Exception:
+            pass
+
+    artifact = _register_text_artifact(
+        artifact_repo,
+        owner_id=record.owner_id,
+        sandbox_id=record.sandbox_id,
+        run_id=command_id,
+        file_path=file_path,
+        filename=filename,
+        artifact_format="json",
+        mime_type="application/json",
+        artifact_type="browser_profile",
+        tags=["profile", "storage_state"],
+        source="profile",
+    )
+    emit_event(
+        {
+            "type": "artifact_ready",
+            "artifact_id": artifact.artifact_id,
+            "sandbox_id": record.sandbox_id,
+            "command_id": command_id,
+            "filename": filename,
+            "artifact_type": artifact.artifact_type,
+            "artifact_format": artifact.artifact_format,
+            "timestamp": _now_iso(),
+        }
+    )
+
+    return {"artifact_id": artifact.artifact_id}
 
 
 async def publish_event(rabbit: RabbitMQ, payload: dict[str, Any]) -> None:
@@ -478,11 +963,19 @@ async def handle_command(
         cfg = build_runtime_config(record, log_emitter=log_emitter)
 
         def runner() -> dict[str, Any]:
+            profile_path = None
+            if hasattr(job.payload, "profile_artifact_id"):
+                profile_path = _resolve_profile_path(
+                    artifact_repo,
+                    record=record,
+                    artifact_id=job.payload.profile_artifact_id,
+                )
             if job.command == "run_browser":
                 artifact_id = run_browser_artifact(
                     cfg,
                     str(job.payload.url),
                     interactive=bool(job.payload.interactive),
+                    storage_state_path=profile_path,
                 )
                 return {"artifact_id": artifact_id}
             if job.command == "record":
@@ -491,6 +984,7 @@ async def handle_command(
                     str(job.payload.url),
                     duration=int(job.payload.duration),
                     interactive=bool(job.payload.interactive),
+                    storage_state_path=profile_path,
                 )
                 return {"session_id": session_id}
             if job.command == "replay":
@@ -499,10 +993,33 @@ async def handle_command(
                     str(job.payload.session_id),
                     speed=float(job.payload.speed),
                     interactive=bool(job.payload.interactive),
+                    storage_state_path=profile_path,
                 )
                 return {"session_id": job.payload.session_id}
             if job.command == "steps":
                 return _run_steps(
+                    cfg,
+                    job.payload,
+                    command_id=job.command_id,
+                    record=record,
+                    artifact_repo=artifact_repo,
+                    artifact_store=artifact_store,
+                    emit_event=emit_event,
+                    log=log_emitter,
+                )
+            if job.command == "agent":
+                return _run_agent(
+                    cfg,
+                    job.payload,
+                    command_id=job.command_id,
+                    record=record,
+                    artifact_repo=artifact_repo,
+                    artifact_store=artifact_store,
+                    emit_event=emit_event,
+                    log=log_emitter,
+                )
+            if job.command == "capture_profile":
+                return _capture_profile(
                     cfg,
                     job.payload,
                     command_id=job.command_id,
@@ -545,6 +1062,7 @@ async def handle_dashboard_update(
     job: DashboardUpdateJob,
     repository: SandboxRepository,
     rabbit: RabbitMQ,
+    artifact_repo: ArtifactRepository,
 ) -> None:
     record = repository.get(job.sandbox_id)
     if not record:
@@ -569,6 +1087,23 @@ async def handle_dashboard_update(
         },
     )
 
+    loop = asyncio.get_running_loop()
+
+    def emit_event(payload: dict[str, Any]) -> None:
+        asyncio.run_coroutine_threadsafe(publish_event(rabbit, payload), loop)
+
+    def log_line(message: str) -> None:
+        logger.info("dashboard_render: %s", message)
+
+    await asyncio.to_thread(
+        render_dashboard_charts,
+        payload_model,
+        record=record,
+        artifact_repo=artifact_repo,
+        emit_event=emit_event,
+        log=log_line,
+    )
+
 
 async def handle_job(
     message,
@@ -591,7 +1126,7 @@ async def handle_job(
             await handle_command(job, repository, artifact_repo, artifact_store, rabbit)
             return
         if isinstance(job, DashboardUpdateJob):
-            await handle_dashboard_update(job, repository, rabbit)
+            await handle_dashboard_update(job, repository, rabbit, artifact_repo)
             return
         logger.error("Unhandled job type: %s", job.type)
 

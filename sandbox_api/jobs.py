@@ -4,7 +4,14 @@ from typing import Any, Literal, Union
 
 from pydantic import BaseModel, Field, root_validator
 
-from .command_models import RecordRequest, ReplayRequest, RunBrowserRequest, StepsRequest
+from .command_models import (
+    AgentStepsRequest,
+    CaptureProfileRequest,
+    RecordRequest,
+    ReplayRequest,
+    RunBrowserRequest,
+    StepsRequest,
+)
 from .dashboard_models import DashboardPayload
 from .models import SandboxRequest
 
@@ -23,7 +30,14 @@ class ProvisionJob(JobBase):
     request: SandboxRequest
 
 
-CommandPayload = Union[RunBrowserRequest, RecordRequest, ReplayRequest, StepsRequest]
+CommandPayload = Union[
+    RunBrowserRequest,
+    RecordRequest,
+    ReplayRequest,
+    StepsRequest,
+    AgentStepsRequest,
+    CaptureProfileRequest,
+]
 
 
 class CommandJob(JobBase):
@@ -31,7 +45,7 @@ class CommandJob(JobBase):
     sandbox_id: str
     owner_id: str
     command_id: str
-    command: Literal["run_browser", "record", "replay", "steps"]
+    command: Literal["run_browser", "record", "replay", "steps", "agent", "capture_profile"]
     payload: CommandPayload
 
     @root_validator(pre=True)
@@ -46,6 +60,10 @@ class CommandJob(JobBase):
             values["payload"] = ReplayRequest.parse_obj(payload)
         elif command == "steps":
             values["payload"] = StepsRequest.parse_obj(payload)
+        elif command == "agent":
+            values["payload"] = AgentStepsRequest.parse_obj(payload)
+        elif command == "capture_profile":
+            values["payload"] = CaptureProfileRequest.parse_obj(payload)
         else:
             raise ValueError(f"Unsupported command type: {command}")
         return values
