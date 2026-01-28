@@ -19,6 +19,7 @@ from .internal_auth import internal_auth_dependency
 from .models import SandboxRequest, SandboxResponse, sandbox_response_from_record
 from .orchestrator import SandboxOrchestrator
 from .rabbitmq import rabbitmq
+from .share_session import router as share_session_router
 from .storage import SandboxRepository
 
 
@@ -80,6 +81,7 @@ app.include_router(router)
 app.include_router(commands_router)
 app.include_router(artifacts_router)
 app.include_router(dashboard_router)
+app.include_router(share_session_router)
 
 _UI_PATH = Path(__file__).with_name("ui.html")
 _CHAT_UI_PATH = Path(__file__).with_name("chat_ui.html")
@@ -126,7 +128,14 @@ async def sandbox_events(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sandbox not found.")
     if record.owner_id != agent_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden.")
-    queue = await event_bus.subscribe(sandbox_id)
+    last_event_id = request.headers.get("last-event-id")
+    last_sequence = None
+    if last_event_id:
+        try:
+            last_sequence = int(last_event_id)
+        except ValueError:
+            last_sequence = None
+    queue, backlog = await event_bus.subscribe(sandbox_id, last_sequence=last_sequence)
 
     async def event_stream():
         try:
@@ -134,6 +143,9 @@ async def sandbox_events(
             yield sse_format(
                 {"type": "connected", "sandbox_id": sandbox_id, "timestamp": datetime.now(timezone.utc).isoformat()}
             )
+            if backlog:
+                for event in backlog:
+                    yield sse_format(event)
             while True:
                 if await request.is_disconnected():
                     break
