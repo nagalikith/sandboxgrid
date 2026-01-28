@@ -14,6 +14,7 @@ from .dashboard import build_dashboard_router
 from .database import init_db, engine
 from .events import event_bus, sse_format
 from .events_models import AgentEventPayload
+from .grading import router as grading_router
 from .jobs import ProvisionJob
 from .internal_auth import internal_auth_dependency
 from .models import SandboxRequest, SandboxResponse, sandbox_response_from_record
@@ -82,6 +83,7 @@ app.include_router(commands_router)
 app.include_router(artifacts_router)
 app.include_router(dashboard_router)
 app.include_router(share_session_router)
+app.include_router(grading_router)
 
 _UI_PATH = Path(__file__).with_name("ui.html")
 _CHAT_UI_PATH = Path(__file__).with_name("chat_ui.html")

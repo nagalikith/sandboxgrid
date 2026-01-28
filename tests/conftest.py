@@ -24,14 +24,18 @@ def client(tmp_path_factory):
     os.environ["INTERNAL_AUTH_SECRET"] = "test-secret"
 
     SQLModel.metadata.clear()
+
+    def _load_module(name: str):
+        if name in sys.modules:
+            return importlib.reload(sys.modules[name])
+        return importlib.import_module(name)
+
     import sandbox_api.database as database
     importlib.reload(database)
-    import sandbox_api.artifacts as artifacts
-    importlib.reload(artifacts)
-    import sandbox_api.storage as storage
-    importlib.reload(storage)
-    import sandbox_api.main as main
-    importlib.reload(main)
+    artifacts = _load_module("sandbox_api.artifacts")
+    storage = _load_module("sandbox_api.storage")
+    grading = _load_module("sandbox_api.grading")
+    main = _load_module("sandbox_api.main")
     import sandbox_api.rabbitmq as rabbitmq_module
 
     async def _noop(*_args, **_kwargs) -> None:
@@ -50,12 +54,16 @@ def client(tmp_path_factory):
 @pytest.fixture(autouse=True)
 def reset_state(client):
     import sandbox_api.artifacts as artifacts
+    import sandbox_api.grading as grading
     import sandbox_api.storage as storage
     from sandbox_api.database import engine
 
     with Session(engine) as session:
         session.exec(delete(artifacts.ArtifactLinkRow))
         session.exec(delete(artifacts.ArtifactRow))
+        session.exec(delete(grading.GradingSessionRow))
+        session.exec(delete(grading.RubricRow))
+        session.exec(delete(grading.SubmissionRow))
         session.exec(delete(storage.SandboxRow))
         session.commit()
 
