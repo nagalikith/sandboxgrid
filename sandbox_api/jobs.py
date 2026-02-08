@@ -13,6 +13,7 @@ from .command_models import (
     StepsRequest,
 )
 from .dashboard_models import DashboardPayload
+from .grading_jobs import GradingJobRequest
 from .models import SandboxRequest
 
 JOB_VERSION = 1
@@ -76,7 +77,14 @@ class DashboardUpdateJob(JobBase):
     payload: DashboardPayload
 
 
-Job = Union[ProvisionJob, CommandJob, DashboardUpdateJob]
+class GradingJob(JobBase):
+    type: Literal["grading"]
+    job_id: str
+    owner_id: str
+    payload: GradingJobRequest
+
+
+Job = Union[ProvisionJob, CommandJob, DashboardUpdateJob, GradingJob]
 
 
 def parse_job(data: dict[str, Any]) -> Job:
@@ -87,4 +95,6 @@ def parse_job(data: dict[str, Any]) -> Job:
         return CommandJob.parse_obj(data)
     if job_type == "dashboard_update":
         return DashboardUpdateJob.parse_obj(data)
+    if job_type == "grading":
+        return GradingJob.parse_obj(data)
     raise ValueError(f"Unknown job type: {job_type}")

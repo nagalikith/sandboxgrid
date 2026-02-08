@@ -4,7 +4,7 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -12,8 +12,20 @@ from pydantic import AnyUrl, BaseModel, Field
 from sqlalchemy import Column, JSON
 from sqlmodel import Field as SQLField, Session, SQLModel, select
 
+from .dashboard_models import DashboardPayload
 from .database import engine
+from .grading_jobs import (
+    GradingJobListResponse,
+    GradingJobRecord,
+    GradingJobRequest,
+    GradingJobResponse,
+    GradingJobStatus,
+    grading_job_repo,
+)
 from .internal_auth import internal_auth_dependency
+from .jobs import DashboardUpdateJob, GradingJob
+from .rabbitmq import rabbitmq
+from .grading_dashboard import build_assessment_dashboard
 
 
 def _now() -> datetime:
@@ -299,6 +311,18 @@ class GradingSessionResponse(BaseModel):
         allow_population_by_field_name = True
 
 
+class AssessmentDashboardRequest(BaseModel):
+    sandbox_id: str = Field(..., min_length=1)
+    assignment_id: str = Field(..., min_length=1)
+    course_id: Optional[str] = None
+    output_dir: Optional[str] = None
+    top_clusters: int = Field(default=8, ge=1, le=25)
+    similarity_threshold: float = Field(default=0.6, ge=0.1, le=0.95)
+    min_cluster_size: int = Field(default=2, ge=1, le=50)
+    score_bins: int = Field(default=10, ge=3, le=30)
+    chart_variant: Optional[Literal["v1", "v2", "v3"]] = None
+
+
 class SubmissionRepository:
     def __init__(self, engine) -> None:
         self.engine = engine
@@ -530,6 +554,23 @@ def _session_response(record: GradingSessionRecord) -> GradingSessionResponse:
         created_at=record.created_at,
         updated_at=record.updated_at,
         finalized_at=record.finalized_at,
+    )
+
+
+def _grading_job_response(record: GradingJobRecord) -> GradingJobResponse:
+    payload_data = dict(record.payload)
+    if "canvas_token" in payload_data:
+        payload_data["canvas_token"] = None
+    return GradingJobResponse(
+        job_id=record.job_id,
+        status=record.status,
+        payload=GradingJobRequest.parse_obj(payload_data),
+        result=record.result,
+        error_message=record.error_message,
+        created_at=record.created_at,
+        updated_at=record.updated_at,
+        started_at=record.started_at,
+        finished_at=record.finished_at,
     )
 
 
@@ -833,3 +874,100 @@ async def finalize_session(
     if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found.")
     return _session_response(updated)
+
+
+@router.post("/jobs", response_model=GradingJobResponse, status_code=status.HTTP_201_CREATED)
+async def create_grading_job(
+    payload: GradingJobRequest,
+    owner_id: str = Depends(require_internal_auth),
+) -> GradingJobResponse:
+    job_id = f"grj_{uuid4().hex[:10]}"
+    now = _now()
+    record = GradingJobRecord(
+        job_id=job_id,
+        owner_id=owner_id,
+        status=GradingJobStatus.queued,
+        payload=payload.dict(),
+        created_at=now,
+        updated_at=now,
+        started_at=None,
+        finished_at=None,
+    )
+    created = grading_job_repo.create(record)
+    try:
+        await rabbitmq.publish_job(
+            GradingJob(
+                job_id=job_id,
+                owner_id=owner_id,
+                payload=payload,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        grading_job_repo.update(
+            job_id,
+            status=GradingJobStatus.failed.value,
+            error_message=f"Queue error: {exc}",
+            updated_at=_now(),
+            finished_at=_now(),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Queue unavailable. Try again later.",
+        ) from exc
+    return _grading_job_response(created)
+
+
+@router.get("/jobs/{job_id}", response_model=GradingJobResponse)
+async def get_grading_job(
+    job_id: str,
+    owner_id: str = Depends(require_internal_auth),
+) -> GradingJobResponse:
+    record = grading_job_repo.get(job_id)
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
+    if record.owner_id != owner_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden.")
+    return _grading_job_response(record)
+
+
+@router.get("/jobs", response_model=GradingJobListResponse)
+async def list_grading_jobs(
+    owner_id: str = Depends(require_internal_auth),
+    offset: int = 0,
+    limit: int = 100,
+) -> GradingJobListResponse:
+    records = grading_job_repo.list(owner_id=owner_id, offset=offset, limit=limit)
+    return GradingJobListResponse(items=[_grading_job_response(record) for record in records])
+
+
+@router.post("/assessment-dashboard", response_model=DashboardPayload, status_code=status.HTTP_202_ACCEPTED)
+async def build_assessment_dashboard_payload(
+    payload: AssessmentDashboardRequest,
+    owner_id: str = Depends(require_internal_auth),
+) -> DashboardPayload:
+    output_dir = Path(payload.output_dir or "./artifacts/grading_runs").expanduser()
+    dashboard = build_assessment_dashboard(
+        output_dir=output_dir,
+        assignment_id=payload.assignment_id,
+        course_id=payload.course_id,
+        top_clusters=payload.top_clusters,
+        similarity_threshold=payload.similarity_threshold,
+        min_cluster_size=payload.min_cluster_size,
+        score_bins=payload.score_bins,
+    )
+    if payload.chart_variant:
+        dashboard = dashboard.copy(update={"chart_variant": payload.chart_variant})
+    try:
+        await rabbitmq.publish_job(
+            DashboardUpdateJob(
+                sandbox_id=payload.sandbox_id,
+                owner_id=owner_id,
+                payload=DashboardPayload.parse_obj(dashboard.dict()),
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Queue unavailable. Try again later.",
+        ) from exc
+    return dashboard

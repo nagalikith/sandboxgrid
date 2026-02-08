@@ -5,6 +5,11 @@ from typing import List, Literal, Optional, Union
 from pydantic import BaseModel, Field, HttpUrl, root_validator
 
 
+class DrawPoint(BaseModel):
+    x: float = Field(..., ge=0.0, le=1.0)
+    y: float = Field(..., ge=0.0, le=1.0)
+
+
 class RunBrowserRequest(BaseModel):
     url: HttpUrl
     interactive: bool = False
@@ -30,11 +35,16 @@ class Step(BaseModel):
         "goto",
         "click",
         "type",
+        "type_rce",
         "wait",
         "screenshot",
         "wait_for_selector",
         "dom_snapshot",
         "page_state",
+        "draw_path",
+        "draw_rect",
+        "point",
+        "freetext",
     ]
     url: Optional[str] = None
     selector: Optional[str] = None
@@ -45,6 +55,8 @@ class Step(BaseModel):
     placeholder: Optional[str] = None
     target_text: Optional[str] = None
     text: Optional[str] = None
+    points: Optional[List[DrawPoint]] = None
+    point: Optional[DrawPoint] = None
     wait_ms: Optional[int] = None
     timeout_ms: Optional[int] = None
     delay_ms: Optional[int] = None
@@ -70,10 +82,39 @@ class Step(BaseModel):
             raise ValueError(f"{action} requires selector or target fields")
         if action == "type" and values.get("text") is None:
             raise ValueError("type requires text")
+        if action == "type_rce":
+            if not has_target:
+                raise ValueError("type_rce requires selector or target fields")
+            if values.get("text") is None:
+                raise ValueError("type_rce requires text")
         if action == "wait" and values.get("wait_ms") is None:
             raise ValueError("wait requires wait_ms")
         if action == "dom_snapshot" and not (values.get("snapshot_format") or values.get("format")):
             raise ValueError("dom_snapshot requires format")
+        if action == "draw_path":
+            points = values.get("points") or []
+            if not has_target:
+                raise ValueError("draw_path requires selector or target fields")
+            if len(points) < 2:
+                raise ValueError("draw_path requires at least 2 points")
+        if action == "draw_rect":
+            points = values.get("points") or []
+            if not has_target:
+                raise ValueError("draw_rect requires selector or target fields")
+            if len(points) < 2:
+                raise ValueError("draw_rect requires at least 2 points")
+        if action == "point":
+            if not has_target:
+                raise ValueError("point requires selector or target fields")
+            if values.get("point") is None:
+                raise ValueError("point requires point")
+        if action == "freetext":
+            if not has_target:
+                raise ValueError("freetext requires selector or target fields")
+            if values.get("point") is None:
+                raise ValueError("freetext requires point")
+            if values.get("text") is None:
+                raise ValueError("freetext requires text")
         return values
 
 
