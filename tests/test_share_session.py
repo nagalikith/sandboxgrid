@@ -3,7 +3,7 @@ import time
 
 import pytest
 
-from sandbox_api.share_session import ShareCookie, ShareSessionRequest, _build_storage_state, _map_cookie
+from sandbox_api.platform.share_session import ShareCookie, ShareSessionRequest, _build_storage_state, _map_cookie
 from tests.auth_helpers import build_internal_headers
 
 

@@ -2,8 +2,8 @@ from datetime import datetime, timedelta, timezone
 
 from sqlmodel import SQLModel, create_engine
 
-from sandbox_api.models import SandboxRecord, SandboxStatus
-from sandbox_api.storage import SandboxRepository
+from sandbox_api.sandboxes.models import SandboxRecord, SandboxStatus
+from sandbox_api.sandboxes.storage import SandboxRepository
 
 
 def _make_record() -> SandboxRecord:

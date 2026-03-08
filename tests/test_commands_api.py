@@ -5,8 +5,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from sandbox_api.commands import build_commands_router
-from sandbox_api.models import SandboxRecord, SandboxStatus
+from sandbox_api.sandboxes.commands import build_commands_router
+from sandbox_api.sandboxes.models import SandboxRecord, SandboxStatus
 from tests.auth_helpers import build_internal_headers
 
 

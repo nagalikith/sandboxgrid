@@ -1,6 +1,6 @@
 import pytest
 
-from sandbox_api.paths import normalize_artifacts_mode
+from sandbox_api.platform.core.paths import normalize_artifacts_mode
 
 
 def test_normalize_artifacts_mode_invalid():

@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sandbox_api.models import SandboxRecord, SandboxRequest, SandboxStatus, sandbox_response_from_record
+from sandbox_api.sandboxes.models import SandboxRecord, SandboxRequest, SandboxStatus, sandbox_response_from_record
 
 
 def test_sandbox_request_defaults():

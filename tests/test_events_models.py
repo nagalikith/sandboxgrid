@@ -1,4 +1,4 @@
-from sandbox_api.events_models import AgentEventPayload
+from sandbox_api.platform.core.events_models import AgentEventPayload
 
 
 def test_agent_event_payload_allows_extra():

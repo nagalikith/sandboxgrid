@@ -1,17 +1,17 @@
 from sqlmodel import SQLModel
 from datetime import datetime, timezone
 
-from sandbox_api.charts_renderer import (
+from sandbox_api.dashboards.charts_renderer import (
     _chart_theme,
     _safe_filename,
     _write_chart_html,
     build_echarts_option,
     render_dashboard_charts,
 )
-from sandbox_api.dashboard_models import DashboardChart, DashboardPayload, DashboardPoint, DashboardSeries
-from sandbox_api.database import engine
-from sandbox_api.models import SandboxRecord, SandboxStatus
-from sandbox_api.artifacts import ArtifactRepository
+from sandbox_api.dashboards.models import DashboardChart, DashboardPayload, DashboardPoint, DashboardSeries
+from sandbox_api.core.database import engine
+from sandbox_api.sandboxes.models import SandboxRecord, SandboxStatus
+from sandbox_api.platform.artifacts import ArtifactRepository
 
 
 def test_build_echarts_option_line_chart():

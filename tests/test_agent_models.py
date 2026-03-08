@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from sandbox_api.command_models import AgentStepsRequest, CaptureProfileRequest, Step
+from sandbox_api.sandboxes.command_models import AgentStepsRequest, CaptureProfileRequest, Step
 
 
 def test_page_state_step_requires_no_target():

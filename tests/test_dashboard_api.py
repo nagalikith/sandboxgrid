@@ -6,13 +6,13 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from sandbox_api.dashboard import (
+from sandbox_api.dashboards.router import (
     _dashboard_path,
     load_dashboard_payload,
     save_dashboard_payload,
     build_dashboard_router,
 )
-from sandbox_api.models import SandboxRecord, SandboxStatus
+from sandbox_api.sandboxes.models import SandboxRecord, SandboxStatus
 from tests.auth_helpers import build_internal_headers
 
 

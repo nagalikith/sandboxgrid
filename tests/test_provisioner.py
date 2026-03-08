@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from sandbox_api.models import SandboxRequest, SandboxStatus
-from sandbox_api.provisioner import (
+from sandbox_api.sandboxes.models import SandboxRequest, SandboxStatus
+from sandbox_api.sandboxes.provisioner import (
     ChromiumContainerProvisioner,
     LocalProvisioner,
     ProvisionResult,

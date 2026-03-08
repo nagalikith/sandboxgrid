@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from sandbox_api.paths import owner_directory, resolve_artifacts_path
+from sandbox_api.platform.core.paths import owner_directory, resolve_artifacts_path
 
 
 def test_owner_directory_sanitizes_and_stable():

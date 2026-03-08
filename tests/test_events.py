@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from sandbox_api import events
+from sandbox_api.platform.core import events
 
 
 @pytest.mark.asyncio

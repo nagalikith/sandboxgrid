@@ -1,8 +1,8 @@
 import pytest
 
-from sandbox_api.jobs import ProvisionJob
-from sandbox_api.models import SandboxRequest
-from sandbox_api.rabbitmq import RabbitMQ
+from sandbox_api.core.jobs import ProvisionJob
+from sandbox_api.sandboxes.models import SandboxRequest
+from sandbox_api.core.rabbitmq import RabbitMQ
 
 
 class DummyExchange:

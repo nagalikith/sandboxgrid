@@ -6,7 +6,7 @@ import pytest
 from fastapi import HTTPException
 from starlette.requests import Request
 
-from sandbox_api import internal_auth
+from sandbox_api.platform.core import internal_auth
 
 
 def _make_request(method: str, path: str, body: bytes, *, query: str = "") -> Request:

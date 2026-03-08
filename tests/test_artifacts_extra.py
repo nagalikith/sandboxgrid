@@ -4,9 +4,9 @@ from datetime import datetime, timezone
 import pytest
 from sqlmodel import SQLModel
 
-from sandbox_api.artifacts import ArtifactLinkRecord, ArtifactRecord, ArtifactRepository, ArtifactStore
-from sandbox_api.database import engine
-from sandbox_api.paths import owner_directory
+from sandbox_api.platform.artifacts import ArtifactLinkRecord, ArtifactRecord, ArtifactRepository, ArtifactStore
+from sandbox_api.core.database import engine
+from sandbox_api.platform.core.paths import owner_directory
 from tests.auth_helpers import build_internal_headers
 
 

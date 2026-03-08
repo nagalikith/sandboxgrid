@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from sandbox_api.agent_planner import _build_prompt, _call_openai, plan_steps
-from sandbox_api.command_models import AgentLlmConfig, AgentStepsRequest, Step
+from sandbox_api.sandboxes.agent_planner import _build_prompt, _call_openai, plan_steps
+from sandbox_api.sandboxes.command_models import AgentLlmConfig, AgentStepsRequest, Step
 
 
 def test_build_prompt_includes_fields():

@@ -4,10 +4,10 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from sqlmodel import SQLModel, create_engine
 
-from sandbox_api.models import SandboxRequest, SandboxStatus
-from sandbox_api.orchestrator import SandboxOrchestrator
-from sandbox_api.provisioner import ProvisionResult
-from sandbox_api.storage import SandboxRepository
+from sandbox_api.sandboxes.models import SandboxRequest, SandboxStatus
+from sandbox_api.sandboxes.orchestrator import SandboxOrchestrator
+from sandbox_api.sandboxes.provisioner import ProvisionResult
+from sandbox_api.sandboxes.storage import SandboxRepository
 
 
 class FakeProvisioner:

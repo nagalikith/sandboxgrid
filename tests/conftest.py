@@ -30,14 +30,14 @@ def client(tmp_path_factory):
             return importlib.reload(sys.modules[name])
         return importlib.import_module(name)
 
-    import sandbox_api.database as database
+    import sandbox_api.core.database as database
     importlib.reload(database)
     artifacts = _load_module("sandbox_api.artifacts")
-    storage = _load_module("sandbox_api.storage")
-    _load_module("sandbox_api.grading_jobs")
-    grading = _load_module("sandbox_api.grading")
+    storage = _load_module("sandbox_api.sandboxes.storage")
+    _load_module("sandbox_api.apps.education.jobs")
+    grading = _load_module("sandbox_api.apps.education.api")
     main = _load_module("sandbox_api.main")
-    import sandbox_api.rabbitmq as rabbitmq_module
+    import sandbox_api.core.rabbitmq as rabbitmq_module
 
     async def _noop(*_args, **_kwargs) -> None:
         return None
@@ -55,10 +55,10 @@ def client(tmp_path_factory):
 @pytest.fixture(autouse=True)
 def reset_state(client):
     import sandbox_api.artifacts as artifacts
-    import sandbox_api.grading as grading
-    import sandbox_api.grading_jobs as grading_jobs
-    import sandbox_api.storage as storage
-    from sandbox_api.database import engine
+    import sandbox_api.apps.education.api as grading
+    import sandbox_api.apps.education.jobs as grading_jobs
+    import sandbox_api.sandboxes.storage as storage
+    from sandbox_api.core.database import engine
 
     with Session(engine) as session:
         session.exec(delete(artifacts.ArtifactLinkRow))

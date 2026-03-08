@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from sandbox_api.command_models import Step, StepsRequest
+from sandbox_api.sandboxes.command_models import Step, StepsRequest
 
 
 def test_step_requires_url_for_goto():
@@ -27,3 +27,8 @@ def test_step_requires_dom_snapshot_format():
 def test_steps_request_requires_steps():
     with pytest.raises(ValidationError):
         StepsRequest(steps=[])
+
+
+def test_step_allows_optional_name():
+    step = Step(action="screenshot", name="after-login")
+    assert step.name == "after-login"

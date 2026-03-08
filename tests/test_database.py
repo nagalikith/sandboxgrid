@@ -2,7 +2,7 @@ from pathlib import Path
 
 from sqlmodel import create_engine
 
-import sandbox_api.database as database
+import sandbox_api.core.database as database
 
 
 def test_init_db_without_alembic(monkeypatch, tmp_path):

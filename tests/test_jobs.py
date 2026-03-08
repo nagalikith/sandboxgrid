@@ -1,7 +1,7 @@
 import pytest
 
-from sandbox_api.jobs import CommandJob, DashboardUpdateJob, ProvisionJob, parse_job
-from sandbox_api.models import SandboxRequest
+from sandbox_api.core.jobs import CommandJob, DashboardUpdateJob, ProvisionJob, parse_job
+from sandbox_api.sandboxes.models import SandboxRequest
 
 
 def test_parse_job_provision():

@@ -4,7 +4,7 @@ import json
 import time
 from urllib.parse import urlencode
 
-from sandbox_api.paths import owner_directory
+from sandbox_api.platform.core.paths import owner_directory
 
 
 _INTERNAL_SECRET = b"test-secret"

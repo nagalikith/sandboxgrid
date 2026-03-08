@@ -6,13 +6,13 @@ from pathlib import Path
 import pytest
 from sqlmodel import SQLModel
 
-from sandbox_api.artifacts import ArtifactRecord, ArtifactRepository, ArtifactStore
-from sandbox_api.command_models import AgentStepsRequest, Step, StepsRequest
-from sandbox_api.database import engine
-from sandbox_api.jobs import CommandJob, DashboardUpdateJob, ProvisionJob
-from sandbox_api.models import SandboxRecord, SandboxRequest, SandboxStatus
-from sandbox_api.storage import SandboxRepository
-from sandbox_api import worker
+from sandbox_api.platform.artifacts import ArtifactRecord, ArtifactRepository, ArtifactStore
+from sandbox_api.sandboxes.command_models import AgentStepsRequest, Step, StepsRequest
+from sandbox_api.core.database import engine
+from sandbox_api.core.jobs import CommandJob, DashboardUpdateJob, ProvisionJob
+from sandbox_api.sandboxes.models import SandboxRecord, SandboxRequest, SandboxStatus
+from sandbox_api.sandboxes.storage import SandboxRepository
+from sandbox_api.platform import worker
 
 
 class DummyLocator:
