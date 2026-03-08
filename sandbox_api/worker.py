@@ -15,19 +15,19 @@ from uuid import uuid4
 
 from playwright.sync_api import sync_playwright
 
-from .agent_planner import plan_steps
+from .sandboxes.agent_planner import plan_steps
 from .artifacts import ArtifactRecord, ArtifactRepository, ArtifactStore
-from .charts_renderer import render_dashboard_charts
-from .dashboard import save_dashboard_payload
-from .database import init_db, engine
-from .grading_jobs import GradingJobStatus, grading_job_repo
-from .grading_runner import GradeStudentArgs, run_grade_student
-from .jobs import CommandJob, DashboardUpdateJob, GradingJob, ProvisionJob, parse_job
-from .models import SandboxRecord, SandboxRequest, SandboxStatus
-from .command_models import StepsRequest
-from .provisioner import build_default_provisioner
-from .rabbitmq import RabbitMQ
-from .storage import SandboxRepository
+from .dashboards.charts_renderer import render_dashboard_charts
+from .dashboards.router import save_dashboard_payload
+from .core.database import init_db, engine
+from .apps.education.jobs import GradingJobStatus, grading_job_repo
+from .apps.education.runner import GradeStudentArgs, run_grade_student
+from .core.jobs import CommandJob, DashboardUpdateJob, GradingJob, ProvisionJob, parse_job
+from .sandboxes.models import SandboxRecord, SandboxRequest, SandboxStatus
+from .sandboxes.command_models import StepsRequest
+from .sandboxes.provisioner import build_default_provisioner
+from .core.rabbitmq import RabbitMQ
+from .sandboxes.storage import SandboxRepository
 
 try:
     from run_artifact import (

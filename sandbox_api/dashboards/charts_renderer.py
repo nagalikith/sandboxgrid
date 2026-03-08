@@ -8,9 +8,9 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Optional
 from uuid import uuid4
 
-from .artifacts import ArtifactRecord, ArtifactRepository
-from .dashboard_models import DashboardChart, DashboardPayload
-from .models import SandboxRecord
+from ..artifacts import ArtifactRecord, ArtifactRepository
+from .models import DashboardChart, DashboardPayload
+from ..sandboxes.models import SandboxRecord
 from datetime import datetime, timezone
 
 

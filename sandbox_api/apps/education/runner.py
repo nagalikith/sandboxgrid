@@ -56,6 +56,45 @@ DEFAULT_SELECTORS = {
         "input[aria-label='Grade']",
         "input[placeholder*='Grade']",
     ],
+    "rubric_button": [
+        "[data-testid='rubric-button']",
+        "[data-testid='rubric-assessment-button']",
+        "button[aria-label*='Rubric']",
+        "button:has-text('Rubric')",
+        "a:has-text('Rubric')",
+    ],
+    "rubric_panel": [
+        "[data-testid='rubric-assessment']",
+        ".rubric-assessment",
+        ".rubric_container",
+        ".Rubric",
+    ],
+    "rubric_row": [
+        "[data-testid='rubric-criterion']",
+        ".rubric__criterion",
+        ".rubric_criterion",
+        "tr",
+        "li",
+    ],
+    "rubric_points_input": [
+        "input[data-testid='rubric-criterion-points']",
+        "input[name*='points']",
+        "input[aria-label*='points']",
+        "input[type='number']",
+        "input[type='text']",
+    ],
+    "rubric_comment_input": [
+        "textarea[data-testid='rubric-criterion-comment']",
+        "textarea[name*='comment']",
+        "textarea[aria-label*='comment']",
+        "textarea",
+    ],
+    "rubric_save": [
+        "button[aria-label*='Save']",
+        "button:has-text('Save')",
+        "button:has-text('Update')",
+        "button:has-text('Apply')",
+    ],
     "comment_box": [
         "textarea[data-rich_text='true']",
         "[data-testid='assignment-comment-input'] textarea",
@@ -1098,12 +1137,124 @@ def build_annotation_steps(
     return steps
 
 
+def _format_points(points: float) -> str:
+    if float(points).is_integer():
+        return str(int(points))
+    return f"{points:.2f}".rstrip("0").rstrip(".")
+
+
+def _normalize_rubric_text(value: str) -> str:
+    cleaned = " ".join(value.split())
+    if len(cleaned) > 80:
+        return f"{cleaned[:77]}..."
+    return cleaned
+
+
+def _escape_has_text(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _rubric_lookup(rubric: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    lookup: Dict[str, Dict[str, Any]] = {}
+    for item in rubric:
+        key = item.get("id") or item.get("criterion_id") or item.get("name")
+        if key:
+            lookup[str(key)] = item
+    return lookup
+
+
+def _rubric_label(item: Optional[Dict[str, Any]], fallback_id: str) -> str:
+    if item:
+        label = item.get("description") or item.get("long_description") or item.get("name")
+        if label:
+            return _normalize_rubric_text(str(label))
+    return _normalize_rubric_text(fallback_id)
+
+
+def _build_scoped_selectors(rows: List[str], inputs: List[str]) -> List[str]:
+    selectors: List[str] = []
+    for row in rows:
+        for input_sel in inputs:
+            selectors.append(f"{row} {input_sel}")
+    return selectors
+
+
+def build_rubric_steps(
+    grade: GradeResult,
+    rubric: List[Dict[str, Any]],
+    selectors: Dict[str, List[str]],
+) -> List[Dict[str, Any]]:
+    def selector_fallbacks(values: Iterable[str]) -> Tuple[str, List[str]]:
+        items = [v for v in values if v]
+        primary = items[0] if items else "body"
+        fallbacks = items[1:] if len(items) > 1 else []
+        return primary, fallbacks
+
+    rubric_button_sel, rubric_button_fallbacks = selector_fallbacks(selectors.get("rubric_button", []))
+    if not rubric_button_sel or rubric_button_sel == "body":
+        return []
+
+    steps: List[Dict[str, Any]] = [
+        {"action": "click", "selector": rubric_button_sel, "selector_fallbacks": rubric_button_fallbacks},
+    ]
+
+    rubric_panel_sel, rubric_panel_fallbacks = selector_fallbacks(selectors.get("rubric_panel", []))
+    if rubric_panel_sel and rubric_panel_sel != "body":
+        steps.append(
+            {"action": "wait_for_selector", "selector": rubric_panel_sel, "selector_fallbacks": rubric_panel_fallbacks}
+        )
+
+    row_bases = selectors.get("rubric_row", []) or []
+    points_inputs = selectors.get("rubric_points_input", []) or []
+    comment_inputs = selectors.get("rubric_comment_input", []) or []
+    rubric_map = _rubric_lookup(rubric)
+
+    for criterion in grade.criteria:
+        rubric_item = rubric_map.get(str(criterion.id))
+        label = _escape_has_text(_rubric_label(rubric_item, str(criterion.id)))
+        rows = [f"{base}:has-text(\"{label}\")" for base in row_bases if base and base != "body"]
+        if not rows:
+            rows = [f"*:has-text(\"{label}\")"]
+
+        points_selectors = _build_scoped_selectors(rows, points_inputs)
+        if points_selectors:
+            steps.append(
+                {
+                    "action": "type",
+                    "selector": points_selectors[0],
+                    "selector_fallbacks": points_selectors[1:],
+                    "text": _format_points(criterion.points),
+                }
+            )
+
+        comment_text = (criterion.comment or "").strip()
+        if comment_text:
+            comment_selectors = _build_scoped_selectors(rows, comment_inputs)
+            if comment_selectors:
+                steps.append(
+                    {
+                        "action": "type",
+                        "selector": comment_selectors[0],
+                        "selector_fallbacks": comment_selectors[1:],
+                        "text": comment_text,
+                    }
+                )
+
+    rubric_save_sel, rubric_save_fallbacks = selector_fallbacks(selectors.get("rubric_save", []))
+    if rubric_save_sel and rubric_save_sel != "body":
+        steps.append({"action": "click", "selector": rubric_save_sel, "selector_fallbacks": rubric_save_fallbacks})
+
+    return steps
+
+
 def build_speedgrader_steps(
     url: str,
     grade: GradeResult,
     selectors: Dict[str, List[str]],
     annotations: Optional[List[AnnotationPlan]] = None,
     load_submission: bool = False,
+    rubric: Optional[List[Dict[str, Any]]] = None,
+    apply_rubric: bool = True,
 ) -> Dict[str, Any]:
     def selector_fallbacks(values: Iterable[str]) -> Tuple[str, List[str]]:
         items = [v for v in values if v]
@@ -1169,6 +1320,9 @@ def build_speedgrader_steps(
 
     annotation_steps = build_annotation_steps(annotations or [], selectors)
     steps.extend(annotation_steps)
+
+    if apply_rubric and rubric:
+        steps.extend(build_rubric_steps(grade, rubric, selectors))
 
     steps.append(
         {
@@ -1390,6 +1544,12 @@ def run_grade_student(args: GradeStudentArgs, sandbox_ops: Optional[SandboxOps] 
         grade = parse_grade_result(raw_response)
 
         annotations_enabled = os.getenv("ENABLE_SPEEDGRADER_ANNOTATIONS", "1").lower() not in {"0", "false", "no"}
+        rubric_enabled = os.getenv("ENABLE_SPEEDGRADER_RUBRIC", "1").lower() not in {"0", "false", "no"}
+        max_annotations = max(1, int(os.getenv("SPEEDGRADER_MAX_ANNOTATIONS", "12")))
+        annotation_max_pages = max(
+            1,
+            int(os.getenv("SPEEDGRADER_ANNOTATION_MAX_PAGES", str(max(4, args.vision_max_pages)))),
+        )
         annotation_plan: List[AnnotationPlan] = []
         if annotations_enabled:
             annotation_images = images
@@ -1397,7 +1557,7 @@ def run_grade_student(args: GradeStudentArgs, sandbox_ops: Optional[SandboxOps] 
                 annotation_images = extractor.render_images(
                     pdf_path,
                     run_dir / "annotation_vision",
-                    max_pages=min(args.vision_max_pages, 4),
+                    max_pages=min(args.vision_max_pages, annotation_max_pages),
                     zoom=1.5,
                 )
             annotation_images = select_images_for_vision(annotation_images, max_total_base64=9_000_000)
@@ -1407,7 +1567,7 @@ def run_grade_student(args: GradeStudentArgs, sandbox_ops: Optional[SandboxOps] 
                     assignment_context=assignment_context,
                     rubric=rubric,
                     grade=grade,
-                    max_annotations=6,
+                    max_annotations=max_annotations,
                 )
                 annotation_content: List[Dict[str, Any]] = [{"type": "text", "text": annotation_prompt}]
                 for image_path in annotation_images:
@@ -1425,7 +1585,7 @@ def run_grade_student(args: GradeStudentArgs, sandbox_ops: Optional[SandboxOps] 
                     annotation_response = llm.chat(
                         annotation_messages,
                         response_format={"type": "json_object"},
-                        max_tokens=1200,
+                        max_tokens=max(1200, max_annotations * 180),
                         temperature=0.0,
                     )
                     annotation_plan = parse_annotation_plan(annotation_response)
@@ -1542,6 +1702,8 @@ def run_grade_student(args: GradeStudentArgs, sandbox_ops: Optional[SandboxOps] 
             selectors,
             annotations=annotation_plan,
             load_submission=True,
+            rubric=rubric,
+            apply_rubric=rubric_enabled,
         )
         if args.profile_artifact_id:
             steps_payload["profile_artifact_id"] = args.profile_artifact_id

@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from .artifacts import ArtifactRecord, repository as artifact_repo, store as artifact_store
-from .internal_auth import internal_auth_dependency
+from .core.internal_auth import internal_auth_dependency
 
 
 _ALLOWED_HOSTS_ENV = "SESSION_SHARE_ALLOWED_HOSTS"

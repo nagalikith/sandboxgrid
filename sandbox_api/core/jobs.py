@@ -4,7 +4,7 @@ from typing import Any, Literal, Union
 
 from pydantic import BaseModel, Field, root_validator
 
-from .command_models import (
+from ..sandboxes.command_models import (
     AgentStepsRequest,
     CaptureProfileRequest,
     RecordRequest,
@@ -12,9 +12,9 @@ from .command_models import (
     RunBrowserRequest,
     StepsRequest,
 )
-from .dashboard_models import DashboardPayload
-from .grading_jobs import GradingJobRequest
-from .models import SandboxRequest
+from ..dashboards.models import DashboardPayload
+from ..apps.education.jobs import GradingJobRequest
+from ..sandboxes.models import SandboxRequest
 
 JOB_VERSION = 1
 

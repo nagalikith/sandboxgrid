@@ -8,13 +8,14 @@ from typing import Any, Dict, Iterable, List, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, JSON
 from sqlmodel import Field as SQLField, Session, SQLModel, select
 
-from .database import engine
-from .internal_auth import internal_auth_dependency
-from .paths import owner_directory
+from .core.database import engine
+from .core.internal_auth import internal_auth_dependency
+from .core.paths import owner_directory
 
 
 class ArtifactRecord(BaseModel):
@@ -509,6 +510,33 @@ async def upload_blob(
     if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Artifact not found.")
     return ArtifactBlobResult(artifact=_build_response(updated))
+
+
+@router.get(
+    "/artifacts/{artifact_id}/blob",
+    summary="Download artifact blob",
+)
+async def download_blob(
+    artifact_id: str,
+    agent_id: str = Depends(require_internal_auth),
+) -> FileResponse:
+    record = repository.get(artifact_id)
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Artifact not found.")
+    if record.owner_id != agent_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden.")
+    if not record.blob_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Artifact blob not found.")
+
+    blob_path = Path(record.blob_path)
+    if not blob_path.exists() or not blob_path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Artifact blob not found.")
+
+    return FileResponse(
+        path=blob_path,
+        media_type=record.mime_type or "application/octet-stream",
+        filename=record.filename or blob_path.name,
+    )
 
 
 @router.get(

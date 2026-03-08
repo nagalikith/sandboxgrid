@@ -9,12 +9,13 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse
 
-from .dashboard_models import DashboardPayload
-from .internal_auth import internal_auth_dependency
-from .jobs import DashboardUpdateJob
-from .models import SandboxRecord
-from .orchestrator import SandboxOrchestrator
-from .rabbitmq import RabbitMQ
+from .models import DashboardPayload
+from ..core.internal_auth import internal_auth_dependency
+from ..core.jobs import DashboardUpdateJob
+from ..sandboxes.models import SandboxRecord
+from ..sandboxes.orchestrator import SandboxOrchestrator
+from ..core.rabbitmq import RabbitMQ
+from ..web.templates import load_template_text
 
 
 def _now_iso() -> str:
@@ -50,9 +51,6 @@ def save_dashboard_payload(record: SandboxRecord, payload: dict[str, Any]) -> No
     tmp_path.replace(path)
 
 
-_DASHBOARD_PATH = Path(__file__).with_name("dashboard.html")
-
-
 def build_dashboard_router(orchestrator: SandboxOrchestrator, rabbit: RabbitMQ) -> APIRouter:
     router = APIRouter(prefix="/sandboxes/{sandbox_id}/dashboard", tags=["dashboard"])
     require_internal_auth = internal_auth_dependency()
@@ -75,7 +73,7 @@ def build_dashboard_router(orchestrator: SandboxOrchestrator, rabbit: RabbitMQ) 
         sandbox_id: str,
         _record: SandboxRecord = Depends(get_sandbox),
     ) -> HTMLResponse:
-        return HTMLResponse(_DASHBOARD_PATH.read_text(encoding="utf-8"))
+        return HTMLResponse(load_template_text("dashboard.html"))
 
     @router.get("/data", response_model=DashboardPayload)
     async def get_dashboard_data(

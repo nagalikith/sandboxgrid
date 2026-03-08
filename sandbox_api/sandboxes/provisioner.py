@@ -10,7 +10,7 @@ from urllib.parse import quote
 from typing import Optional, Protocol, Tuple
 
 from .models import SandboxRequest, SandboxStatus
-from .paths import normalize_artifacts_mode, resolve_artifacts_path
+from ..core.paths import normalize_artifacts_mode, resolve_artifacts_path
 
 
 @dataclass

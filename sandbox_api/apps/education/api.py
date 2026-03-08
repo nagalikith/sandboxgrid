@@ -12,9 +12,9 @@ from pydantic import AnyUrl, BaseModel, Field
 from sqlalchemy import Column, JSON
 from sqlmodel import Field as SQLField, Session, SQLModel, select
 
-from .dashboard_models import DashboardPayload
-from .database import engine
-from .grading_jobs import (
+from ...dashboards.models import DashboardPayload
+from ...core.database import engine
+from .jobs import (
     GradingJobListResponse,
     GradingJobRecord,
     GradingJobRequest,
@@ -22,10 +22,10 @@ from .grading_jobs import (
     GradingJobStatus,
     grading_job_repo,
 )
-from .internal_auth import internal_auth_dependency
-from .jobs import DashboardUpdateJob, GradingJob
-from .rabbitmq import rabbitmq
-from .grading_dashboard import build_assessment_dashboard
+from ...core.internal_auth import internal_auth_dependency
+from ...core.jobs import DashboardUpdateJob, GradingJob
+from ...core.rabbitmq import rabbitmq
+from .dashboard import build_assessment_dashboard
 
 
 def _now() -> datetime:

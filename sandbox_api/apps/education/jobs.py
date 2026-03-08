@@ -8,7 +8,7 @@ from pydantic import AnyUrl, BaseModel, Field
 from sqlalchemy import Column, JSON
 from sqlmodel import Field as SQLField, Session, SQLModel, select
 
-from .database import engine
+from ...core.database import engine
 
 
 class GradingJobStatus(str, Enum):

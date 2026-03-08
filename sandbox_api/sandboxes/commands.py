@@ -15,11 +15,11 @@ from .command_models import (
     RunBrowserRequest,
     StepsRequest,
 )
-from .internal_auth import internal_auth_dependency
-from .jobs import CommandJob
+from ..core.internal_auth import internal_auth_dependency
+from ..core.jobs import CommandJob
 from .models import SandboxRecord, SandboxStatus
 from .orchestrator import SandboxOrchestrator
-from .rabbitmq import RabbitMQ
+from ..core.rabbitmq import RabbitMQ
 
 
 class CommandStatus(str, Enum):

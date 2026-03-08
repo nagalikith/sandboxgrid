@@ -46,6 +46,7 @@ class Step(BaseModel):
         "point",
         "freetext",
     ]
+    name: Optional[str] = None
     url: Optional[str] = None
     selector: Optional[str] = None
     selector_fallbacks: Optional[List[str]] = None

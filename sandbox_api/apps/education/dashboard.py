@@ -8,7 +8,7 @@ from pathlib import Path
 from textwrap import shorten
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from .dashboard_models import DashboardChart, DashboardMetric, DashboardPayload, DashboardPoint, DashboardSeries, DashboardTable
+from ...dashboards.models import DashboardChart, DashboardMetric, DashboardPayload, DashboardPoint, DashboardSeries, DashboardTable
 
 
 _STOPWORDS = {
