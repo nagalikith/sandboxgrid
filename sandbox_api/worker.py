@@ -111,9 +111,64 @@ def _build_grade_student_args(payload, internal_secret: str, owner_id: Optional[
     canvas_token = payload.canvas_token or os.getenv("CANVAS_TOKEN")
     if not canvas_token:
         raise RuntimeError("Missing Canvas token; set canvas_token or CANVAS_TOKEN.")
-    llm_base = payload.llm_base or os.getenv("LLM_API_BASE", "https://api.openai.com/v1")
-    llm_model = payload.llm_model or os.getenv("LLM_MODEL", "gpt-4o-mini")
-    llm_key = os.getenv("LLM_API_KEY")
+    # Resolve three independent LLM roles so OCR/extraction can run on vLLM while
+    # rubric grading and annotation planning use a different Fireworks-hosted model.
+    grading_llm_base = (
+        payload.grading_llm_base
+        or payload.llm_base
+        or os.getenv("GRADING_LLM_BASE")
+        or os.getenv("FIREWORKS_API_BASE")
+        or os.getenv("LLM_API_BASE")
+        or "https://api.fireworks.ai/inference/v1"
+    )
+    grading_llm_model = (
+        payload.grading_llm_model
+        or payload.llm_model
+        or os.getenv("GRADING_LLM_MODEL")
+        or os.getenv("FIREWORKS_GRADING_MODEL")
+        or os.getenv("LLM_MODEL")
+        or "accounts/fireworks/models/llama-v3p1-70b-instruct"
+    )
+    grading_llm_key = (
+        os.getenv("GRADING_LLM_API_KEY")
+        or os.getenv("FIREWORKS_API_KEY")
+        or os.getenv("LLM_API_KEY")
+    )
+    extraction_llm_base = (
+        payload.extraction_llm_base
+        or os.getenv("EXTRACTION_LLM_BASE")
+        or os.getenv("VLLM_API_BASE")
+        or os.getenv("FIREWORKS_API_BASE")
+        or grading_llm_base
+    )
+    extraction_llm_model = (
+        payload.extraction_llm_model
+        or os.getenv("EXTRACTION_LLM_MODEL")
+        or os.getenv("VLLM_MODEL")
+        or os.getenv("FIREWORKS_VISION_MODEL")
+    )
+    extraction_llm_key = (
+        os.getenv("EXTRACTION_LLM_API_KEY")
+        or os.getenv("VLLM_API_KEY")
+        or os.getenv("FIREWORKS_API_KEY")
+        or os.getenv("LLM_API_KEY")
+    )
+    annotation_llm_base = (
+        payload.annotation_llm_base
+        or os.getenv("ANNOTATION_LLM_BASE")
+        or grading_llm_base
+    )
+    annotation_llm_model = (
+        payload.annotation_llm_model
+        or os.getenv("ANNOTATION_LLM_MODEL")
+        or grading_llm_model
+    )
+    annotation_llm_key = (
+        os.getenv("ANNOTATION_LLM_API_KEY")
+        or os.getenv("GRADING_LLM_API_KEY")
+        or os.getenv("FIREWORKS_API_KEY")
+        or os.getenv("LLM_API_KEY")
+    )
     sandbox_api = os.getenv("SANDBOX_API", "http://localhost:8000")
     agent_id = payload.agent_id or owner_id or os.getenv("SANDBOX_AGENT_ID", "grader")
     output_dir = payload.output_dir or "./artifacts/grading_runs"
@@ -136,9 +191,15 @@ def _build_grade_student_args(payload, internal_secret: str, owner_id: Optional[
         vision_max_pages=payload.vision_max_pages,
         text_max_chars=payload.text_max_chars,
         min_text_chars=payload.min_text_chars,
-        llm_base=llm_base,
-        llm_key=llm_key,
-        llm_model=llm_model,
+        extraction_llm_base=extraction_llm_base,
+        extraction_llm_key=extraction_llm_key,
+        extraction_llm_model=extraction_llm_model,
+        grading_llm_base=grading_llm_base,
+        grading_llm_key=grading_llm_key,
+        grading_llm_model=grading_llm_model,
+        annotation_llm_base=annotation_llm_base,
+        annotation_llm_key=annotation_llm_key,
+        annotation_llm_model=annotation_llm_model,
         navigation_mode=payload.navigation_mode,
         strict_ui_checks=payload.strict_ui_checks,
     )

@@ -35,6 +35,12 @@ class GradingJobRequest(BaseModel):
     min_text_chars: int = Field(default=200, ge=0)
     llm_base: Optional[str] = None
     llm_model: Optional[str] = None
+    extraction_llm_base: Optional[str] = None
+    extraction_llm_model: Optional[str] = None
+    grading_llm_base: Optional[str] = None
+    grading_llm_model: Optional[str] = None
+    annotation_llm_base: Optional[str] = None
+    annotation_llm_model: Optional[str] = None
     strict_ui_checks: bool = True
     output_dir: Optional[str] = None
 

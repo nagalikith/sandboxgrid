@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from sqlmodel import SQLModel
 
+from sandbox_api.apps.education.jobs import GradingJobRequest
 from sandbox_api.platform.artifacts import ArtifactRecord, ArtifactRepository, ArtifactStore
 from sandbox_api.sandboxes.command_models import AgentStepsRequest, Step, StepsRequest
 from sandbox_api.core.database import engine
@@ -194,6 +195,31 @@ def test_worker_helpers(tmp_path):
     record = record.copy(update={"cdp_url": None, "cdp_port": None})
     with pytest.raises(RuntimeError):
         worker.build_runtime_config(record)
+
+
+def test_build_grade_student_args_prefers_split_llm_envs(monkeypatch):
+    monkeypatch.setenv("CANVAS_TOKEN", "canvas-token")
+    monkeypatch.setenv("VLLM_API_BASE", "http://127.0.0.1:8001/v1")
+    monkeypatch.setenv("VLLM_MODEL", "qwen-ocr")
+    monkeypatch.setenv("GRADING_LLM_BASE", "https://api.fireworks.ai/inference/v1")
+    monkeypatch.setenv("GRADING_LLM_API_KEY", "fw-key")
+    monkeypatch.setenv("GRADING_LLM_MODEL", "accounts/fireworks/models/llama-v3p1-70b-instruct")
+    monkeypatch.setenv("ANNOTATION_LLM_MODEL", "accounts/fireworks/models/qwen2p5-vl-32b-instruct")
+
+    payload = GradingJobRequest(
+        course_id="course-1",
+        assignment_id="assign-1",
+        student_id="student-1",
+        canvas_base="https://canvas.example.edu",
+    )
+    args = worker._build_grade_student_args(payload, "internal-secret", owner_id="grader")
+
+    assert args.extraction_llm_base == "http://127.0.0.1:8001/v1"
+    assert args.extraction_llm_model == "qwen-ocr"
+    assert args.grading_llm_base == "https://api.fireworks.ai/inference/v1"
+    assert args.grading_llm_key == "fw-key"
+    assert args.grading_llm_model == "accounts/fireworks/models/llama-v3p1-70b-instruct"
+    assert args.annotation_llm_model == "accounts/fireworks/models/qwen2p5-vl-32b-instruct"
 
 
 def test_resolve_profile_path_errors(tmp_path):

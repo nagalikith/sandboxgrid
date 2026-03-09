@@ -270,9 +270,15 @@ class GradeStudentArgs:
     vision_max_pages: int = 6
     text_max_chars: int = 40000
     min_text_chars: int = 200
-    llm_base: str = "https://api.openai.com/v1"
-    llm_key: Optional[str] = None
-    llm_model: str = "gpt-4o-mini"
+    extraction_llm_base: Optional[str] = None
+    extraction_llm_key: Optional[str] = None
+    extraction_llm_model: Optional[str] = None
+    grading_llm_base: str = "https://api.fireworks.ai/inference/v1"
+    grading_llm_key: Optional[str] = None
+    grading_llm_model: str = "accounts/fireworks/models/llama-v3p1-70b-instruct"
+    annotation_llm_base: Optional[str] = None
+    annotation_llm_key: Optional[str] = None
+    annotation_llm_model: Optional[str] = None
     navigation_mode: str = "course"
     strict_ui_checks: bool = True
 
@@ -640,6 +646,28 @@ class LlmClient:
         return resp.json()
 
 
+def _response_text(raw_response: Dict[str, Any], *, label: str) -> str:
+    # OpenAI-compatible providers can return either a plain string or structured
+    # content blocks; normalize both into a single text value for downstream parsers.
+    try:
+        content = raw_response["choices"][0]["message"]["content"]
+    except (KeyError, IndexError) as exc:
+        raise RuntimeError(f"{label} missing content.") from exc
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: List[str] = []
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            text = item.get("text")
+            if text:
+                parts.append(str(text))
+        if parts:
+            return "\n".join(parts)
+    raise RuntimeError(f"{label} returned unsupported content format.")
+
+
 def strip_html(value: Optional[str]) -> str:
     if not value:
         return ""
@@ -806,6 +834,75 @@ def parse_questions_from_content(content: str) -> List[str]:
     return []
 
 
+def parse_extracted_pages_from_content(content: str) -> List[Dict[str, Any]]:
+    content = content.strip()
+    if not content:
+        return []
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError:
+        return [{"page": 1, "text": content}]
+
+    if isinstance(data, dict):
+        items = data.get("pages") or data.get("items") or data.get("content") or []
+    elif isinstance(data, list):
+        items = data
+    else:
+        items = []
+
+    parsed: List[Dict[str, Any]] = []
+    for index, item in enumerate(items, start=1):
+        if isinstance(item, str):
+            text = item.strip()
+            if text:
+                parsed.append({"page": index, "text": text})
+            continue
+        if not isinstance(item, dict):
+            continue
+        raw_page = item.get("page") or item.get("page_number") or index
+        raw_text = item.get("text") or item.get("content") or item.get("ocr_text") or ""
+        text = str(raw_text).strip()
+        if not text:
+            continue
+        try:
+            page_num = int(raw_page)
+        except (TypeError, ValueError):
+            page_num = index
+        parsed.append({"page": max(page_num, 1), "text": text})
+    return parsed
+
+
+def extract_submission_text_with_llm(
+    *,
+    images: List[Path],
+    client: LlmClient,
+) -> List[Dict[str, Any]]:
+    # This stage is intentionally extraction-only: it converts page images into
+    # OCR-like text so the grading model can score from text instead of vision.
+    if not images:
+        return []
+    prompt = (
+        "Transcribe the student submission pages shown in these images. "
+        "Return JSON only with key 'pages' as an array of objects. "
+        "Each object must contain 'page' (1-based integer) and 'text' (string). "
+        "Do not grade, summarize, or interpret the work."
+    )
+    content: List[Dict[str, Any]] = [{"type": "text", "text": prompt}]
+    for image_path in images:
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{encode_image(image_path)}"},
+            }
+        )
+    messages = [
+        {"role": "system", "content": "Return only JSON."},
+        {"role": "user", "content": content},
+    ]
+    raw = client.chat(messages, max_tokens=max(1800, len(images) * 700), temperature=0.0)
+    return parse_extracted_pages_from_content(_response_text(raw, label="Extraction LLM response"))
+
+
 def extract_questions_with_fireworks(
     *,
     images: List[Path],
@@ -837,10 +934,7 @@ def extract_questions_with_fireworks(
         {"role": "user", "content": content},
     ]
     raw = client.chat(messages, max_tokens=1200, temperature=0.0)
-    try:
-        text = raw["choices"][0]["message"]["content"]
-    except (KeyError, IndexError) as exc:
-        raise RuntimeError("Vision LLM response missing content.") from exc
+    text = _response_text(raw, label="Vision LLM response")
     return parse_questions_from_content(text)
 
 
@@ -890,10 +984,7 @@ def build_annotation_prompt(
 
 
 def parse_annotation_plan(raw_response: Dict[str, Any]) -> List[AnnotationPlan]:
-    try:
-        content = raw_response["choices"][0]["message"]["content"]
-    except (KeyError, IndexError) as exc:
-        raise RuntimeError("Annotation response missing content.") from exc
+    content = _response_text(raw_response, label="Annotation response")
     try:
         data = json.loads(content)
     except json.JSONDecodeError:
@@ -1003,10 +1094,7 @@ def build_grade_prompt(
 
 
 def parse_grade_result(raw_response: Dict[str, Any]) -> GradeResult:
-    try:
-        content = raw_response["choices"][0]["message"]["content"]
-    except (KeyError, IndexError) as exc:
-        raise RuntimeError("LLM response missing content.") from exc
+    content = _response_text(raw_response, label="LLM response")
     try:
         data = json.loads(content)
     except json.JSONDecodeError as exc:
@@ -1497,6 +1585,21 @@ def run_grade_student(args: GradeStudentArgs, sandbox_ops: Optional[SandboxOps] 
         images: List[Path] = []
         if use_vision:
             images = extractor.render_images(pdf_path, run_dir / "vision", max_pages=args.vision_max_pages)
+            if args.extraction_llm_model:
+                try:
+                    # If a dedicated extraction model is configured, transcribe the
+                    # submission first and only send the resulting text to the grader.
+                    extraction_llm = LlmClient(
+                        args.extraction_llm_base or args.grading_llm_base,
+                        args.extraction_llm_key,
+                        args.extraction_llm_model,
+                    )
+                    extracted_pages = extract_submission_text_with_llm(images=images, client=extraction_llm)
+                    extracted_text = build_text_payload(extracted_pages, args.text_max_chars)
+                    if extracted_text:
+                        evidence_mode = "vision_text"
+                except Exception:
+                    extracted_text = extracted_text or ""
 
         assignment_context, assignment_context_sources = build_assignment_context(
             assignment_instructions=assignment_instructions,
@@ -1514,12 +1617,14 @@ def run_grade_student(args: GradeStudentArgs, sandbox_ops: Optional[SandboxOps] 
             assignment_context=assignment_context,
             rubric=rubric,
             policy=args.policy,
-            extracted_text=extracted_text if not use_vision else "(See page images)",
+            extracted_text=extracted_text if extracted_text else "(No extractable text found.)",
             evidence_mode=evidence_mode,
         )
 
-        llm = LlmClient(args.llm_base, args.llm_key, args.llm_model)
-        if use_vision:
+        # Keep true vision grading only as a fallback. When extraction succeeds,
+        # the grader sees text and can use a text-optimized model.
+        grading_llm = LlmClient(args.grading_llm_base, args.grading_llm_key, args.grading_llm_model)
+        if use_vision and evidence_mode == "vision":
             content: List[Dict[str, Any]] = [{"type": "text", "text": prompt}]
             for image_path in images:
                 content.append(
@@ -1540,7 +1645,7 @@ def run_grade_student(args: GradeStudentArgs, sandbox_ops: Optional[SandboxOps] 
                 {"role": "user", "content": prompt},
             ]
 
-        raw_response = llm.chat(messages, response_format={"type": "json_object"})
+        raw_response = grading_llm.chat(messages, response_format={"type": "json_object"})
         grade = parse_grade_result(raw_response)
 
         annotations_enabled = os.getenv("ENABLE_SPEEDGRADER_ANNOTATIONS", "1").lower() not in {"0", "false", "no"}
@@ -1582,7 +1687,14 @@ def run_grade_student(args: GradeStudentArgs, sandbox_ops: Optional[SandboxOps] 
                     {"role": "user", "content": annotation_content},
                 ]
                 try:
-                    annotation_response = llm.chat(
+                    # Annotation planning can stay on a separate multimodal model even
+                    # when grading itself is handled by a text-only model.
+                    annotation_llm = LlmClient(
+                        args.annotation_llm_base or args.grading_llm_base,
+                        args.annotation_llm_key or args.grading_llm_key,
+                        args.annotation_llm_model or args.grading_llm_model,
+                    )
+                    annotation_response = annotation_llm.chat(
                         annotation_messages,
                         response_format={"type": "json_object"},
                         max_tokens=max(1200, max_annotations * 180),
@@ -1595,7 +1707,9 @@ def run_grade_student(args: GradeStudentArgs, sandbox_ops: Optional[SandboxOps] 
         grade_payload = {
             "graded_at": datetime.now(timezone.utc).isoformat(),
             "grader_version": "speedgrader_e2e_v1",
-            "model_version": args.llm_model,
+            "model_version": args.grading_llm_model,
+            "extraction_model_version": args.extraction_llm_model,
+            "annotation_model_version": args.annotation_llm_model or args.grading_llm_model,
             "course_id": args.course_id,
             "assignment_id": args.assignment_id,
             "student_id": args.student_id,
@@ -1809,9 +1923,27 @@ def _parse_args(argv: Optional[List[str]] = None) -> GradeStudentArgs:
     parser.add_argument("--vision-max-pages", type=int, default=6)
     parser.add_argument("--text-max-chars", type=int, default=40000)
     parser.add_argument("--min-text-chars", type=int, default=200)
-    parser.add_argument("--llm-base", default=os.getenv("LLM_API_BASE", "https://api.openai.com/v1"))
+    parser.add_argument("--llm-base", default=os.getenv("LLM_API_BASE"))
     parser.add_argument("--llm-key", default=os.getenv("LLM_API_KEY"))
-    parser.add_argument("--llm-model", default=os.getenv("LLM_MODEL", "gpt-4o-mini"))
+    parser.add_argument("--llm-model", default=os.getenv("LLM_MODEL"))
+    parser.add_argument("--extraction-llm-base", default=os.getenv("EXTRACTION_LLM_BASE") or os.getenv("VLLM_API_BASE"))
+    parser.add_argument("--extraction-llm-key", default=os.getenv("EXTRACTION_LLM_API_KEY") or os.getenv("VLLM_API_KEY"))
+    parser.add_argument("--extraction-llm-model", default=os.getenv("EXTRACTION_LLM_MODEL") or os.getenv("VLLM_MODEL"))
+    parser.add_argument(
+        "--grading-llm-base",
+        default=os.getenv("GRADING_LLM_BASE") or os.getenv("FIREWORKS_API_BASE") or os.getenv("LLM_API_BASE") or "https://api.fireworks.ai/inference/v1",
+    )
+    parser.add_argument(
+        "--grading-llm-key",
+        default=os.getenv("GRADING_LLM_API_KEY") or os.getenv("FIREWORKS_API_KEY") or os.getenv("LLM_API_KEY"),
+    )
+    parser.add_argument(
+        "--grading-llm-model",
+        default=os.getenv("GRADING_LLM_MODEL") or os.getenv("FIREWORKS_GRADING_MODEL") or os.getenv("LLM_MODEL") or "accounts/fireworks/models/llama-v3p1-70b-instruct",
+    )
+    parser.add_argument("--annotation-llm-base", default=os.getenv("ANNOTATION_LLM_BASE"))
+    parser.add_argument("--annotation-llm-key", default=os.getenv("ANNOTATION_LLM_API_KEY"))
+    parser.add_argument("--annotation-llm-model", default=os.getenv("ANNOTATION_LLM_MODEL"))
     parser.add_argument(
         "--navigation-mode",
         choices=["course", "direct"],
@@ -1838,9 +1970,15 @@ def _parse_args(argv: Optional[List[str]] = None) -> GradeStudentArgs:
         vision_max_pages=args.vision_max_pages,
         text_max_chars=args.text_max_chars,
         min_text_chars=args.min_text_chars,
-        llm_base=args.llm_base,
-        llm_key=args.llm_key,
-        llm_model=args.llm_model,
+        extraction_llm_base=args.extraction_llm_base,
+        extraction_llm_key=args.extraction_llm_key,
+        extraction_llm_model=args.extraction_llm_model,
+        grading_llm_base=args.grading_llm_base or args.llm_base or "https://api.fireworks.ai/inference/v1",
+        grading_llm_key=args.grading_llm_key or args.llm_key,
+        grading_llm_model=args.grading_llm_model or args.llm_model or "accounts/fireworks/models/llama-v3p1-70b-instruct",
+        annotation_llm_base=args.annotation_llm_base,
+        annotation_llm_key=args.annotation_llm_key,
+        annotation_llm_model=args.annotation_llm_model,
         navigation_mode=args.navigation_mode,
         strict_ui_checks=args.strict_ui_checks,
     )
