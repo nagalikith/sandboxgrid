@@ -8,6 +8,8 @@ import aio_pika
 
 from .jobs import JobBase, parse_job
 
+DEFAULT_RABBITMQ_URL = "amqp://admin:change_me@localhost:5672/"
+
 
 class RabbitMQ:
     def __init__(
@@ -18,7 +20,7 @@ class RabbitMQ:
         events_exchange: Optional[str] = None,
         prefetch: Optional[int] = None,
     ) -> None:
-        self.url = url or os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
+        self.url = url or os.getenv("RABBITMQ_URL", DEFAULT_RABBITMQ_URL)
         self.queue_name = queue_name or os.getenv("RABBITMQ_QUEUE", "sandbox.jobs")
         self.events_exchange = events_exchange or os.getenv(
             "RABBITMQ_EVENTS_EXCHANGE", "sandbox.events"

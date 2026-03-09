@@ -2,7 +2,7 @@ import pytest
 
 from sandbox_api.core.jobs import ProvisionJob
 from sandbox_api.sandboxes.models import SandboxRequest
-from sandbox_api.core.rabbitmq import RabbitMQ
+from sandbox_api.core.rabbitmq import DEFAULT_RABBITMQ_URL, RabbitMQ
 
 
 class DummyExchange:
@@ -99,3 +99,9 @@ def test_rabbitmq_decode_job():
     ).json().encode("utf-8")
     job = rabbit.decode_job(body)
     assert job.sandbox_id == "sbx_1"
+
+
+def test_rabbitmq_uses_local_compose_default_url(monkeypatch):
+    monkeypatch.delenv("RABBITMQ_URL", raising=False)
+    rabbit = RabbitMQ()
+    assert rabbit.url == DEFAULT_RABBITMQ_URL
