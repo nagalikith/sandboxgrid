@@ -897,6 +897,7 @@ async def create_grading_job(
     try:
         await rabbitmq.publish_job(
             GradingJob(
+                type="grading",
                 job_id=job_id,
                 owner_id=owner_id,
                 payload=payload,
