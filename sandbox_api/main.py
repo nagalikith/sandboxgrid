@@ -1,3 +1,7 @@
+from .core.env import load_repo_env
+
+load_repo_env()
+
 from .api.app import app, create_app
 from .core.rabbitmq import rabbitmq
 
