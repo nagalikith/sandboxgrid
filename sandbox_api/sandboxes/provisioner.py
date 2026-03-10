@@ -1,16 +1,21 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
 import socket
-import subprocess
 from urllib.parse import quote
+from urllib.request import urlopen
 from typing import Optional, Protocol, Tuple
 
 from .models import SandboxRequest, SandboxStatus
 from ..core.paths import normalize_artifacts_mode, resolve_artifacts_path
+
+logger = logging.getLogger("sandbox.provisioner")
+CDP_EXPOSED_PORT = 9223
 
 
 @dataclass
@@ -60,6 +65,12 @@ class LocalProvisioner:
         self._artifacts_mode = normalize_artifacts_mode(artifacts_mode)
 
     async def provision(self, sandbox_id: str, request: SandboxRequest, *, owner_id: str) -> ProvisionResult:
+        logger.info(
+            "provision_local start sandbox_id=%s owner_id=%s capabilities=%s",
+            sandbox_id,
+            owner_id,
+            request.capabilities,
+        )
         if self._provision_delay_seconds > 0:
             await asyncio.sleep(self._provision_delay_seconds)
         browser_url, dashboard_url, events_url = self._build_urls(sandbox_id)
@@ -78,7 +89,7 @@ class LocalProvisioner:
                 mode=self._artifacts_mode,
             )
             artifacts_path.mkdir(parents=True, exist_ok=True)
-        return ProvisionResult(
+        result = ProvisionResult(
             status=SandboxStatus.ready,
             browser_url=browser_url,
             dashboard_url=dashboard_url,
@@ -87,6 +98,14 @@ class LocalProvisioner:
             backend_ref="local",
             artifacts_path=str(artifacts_path.resolve()) if artifacts_path else None,
         )
+        logger.info(
+            "provision_local done sandbox_id=%s browser_url=%s cdp_url=%s artifacts_path=%s",
+            sandbox_id,
+            result.browser_url,
+            result.cdp_url,
+            result.artifacts_path,
+        )
+        return result
 
     def _build_urls(self, sandbox_id: str) -> Tuple[Optional[str], Optional[str], str]:
         browser_url = f"{self._sandbox_base_url}/b/{sandbox_id}"
@@ -103,6 +122,7 @@ class LocalProvisioner:
 
 def build_default_provisioner() -> Provisioner:
     mode = os.getenv("SANDBOX_PROVISIONER", "local").lower()
+    logger.info("provisioner_select mode=%s", mode)
     if mode == "docker":
         return ChromiumContainerProvisioner.from_env()
     sandbox_base = os.getenv("SANDBOX_PUBLIC_BASE", "http://localhost:8080")
@@ -144,6 +164,8 @@ class ChromiumContainerProvisioner:
         screen_height: str = "1080",
         screen_depth: str = "24",
         chromium_flags: str = "",
+        port_ready_timeout: float = 10.0,
+        cdp_ready_timeout: float = 45.0,
     ) -> None:
         self.docker_bin = docker_bin
         self.image = image
@@ -157,6 +179,8 @@ class ChromiumContainerProvisioner:
         self.screen_height = screen_height
         self.screen_depth = screen_depth
         self.chromium_flags = chromium_flags
+        self.port_ready_timeout = port_ready_timeout
+        self.cdp_ready_timeout = cdp_ready_timeout
 
     @classmethod
     def from_env(cls) -> "ChromiumContainerProvisioner":
@@ -171,6 +195,8 @@ class ChromiumContainerProvisioner:
         screen_height = os.getenv("SANDBOX_SCREEN_HEIGHT", "1080")
         screen_depth = os.getenv("SANDBOX_SCREEN_DEPTH", "24")
         chromium_flags = os.getenv("SANDBOX_CHROMIUM_FLAGS", "")
+        port_ready_timeout = float(os.getenv("SANDBOX_PORT_READY_TIMEOUT_SECONDS", "10"))
+        cdp_ready_timeout = float(os.getenv("SANDBOX_CDP_READY_TIMEOUT_SECONDS", "45"))
         artifacts_mode = os.getenv("SANDBOX_ARTIFACTS_MODE", "per-user")
         artifacts_root.mkdir(parents=True, exist_ok=True)
         return cls(
@@ -186,9 +212,18 @@ class ChromiumContainerProvisioner:
             screen_height=screen_height,
             screen_depth=screen_depth,
             chromium_flags=chromium_flags,
+            port_ready_timeout=port_ready_timeout,
+            cdp_ready_timeout=cdp_ready_timeout,
         )
 
     async def provision(self, sandbox_id: str, request: SandboxRequest, *, owner_id: str) -> ProvisionResult:
+        logger.info(
+            "provision_docker start sandbox_id=%s owner_id=%s image=%s capabilities=%s",
+            sandbox_id,
+            owner_id,
+            self.image,
+            request.capabilities,
+        )
         http_port = _find_free_port()
         cdp_port = _find_free_port()
         container_name = f"cua_{sandbox_id}"
@@ -201,7 +236,6 @@ class ChromiumContainerProvisioner:
         artifacts_path.mkdir(parents=True, exist_ok=True)
 
         cmd = [
-            self.docker_bin,
             "run",
             "-d",
             "--name",
@@ -209,7 +243,7 @@ class ChromiumContainerProvisioner:
             "-p",
             f"{self.bind_host}:{http_port}:8080",
             "-p",
-            f"{self.bind_host}:{cdp_port}:9222",
+            f"{self.bind_host}:{cdp_port}:{CDP_EXPOSED_PORT}",
             "--shm-size",
             self.shm_size,
             "-e",
@@ -225,16 +259,37 @@ class ChromiumContainerProvisioner:
             self.image,
         ]
 
-        process = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        stdout, stderr = await process.communicate()
-        if process.returncode != 0:
-            raise RuntimeError(f"Docker run failed: {stderr.decode().strip()}")
+        returncode, stdout, stderr = await self._run_docker_command(*cmd)
+        if returncode != 0:
+            raise RuntimeError(f"Docker run failed: {stderr}")
 
-        container_id = stdout.decode().strip()
-        await self._wait_for_port(http_port)
-        await self._wait_for_port(cdp_port)
+        container_id = stdout
+        cdp_url = f"http://{self._probe_host()}:{cdp_port}"
+        try:
+            await self._wait_for_port(http_port, timeout=self.port_ready_timeout)
+            try:
+                await self._wait_for_port(cdp_port, timeout=self.port_ready_timeout)
+                await self._wait_for_cdp_ready_url(cdp_url, timeout=self.cdp_ready_timeout)
+            except Exception as host_exc:  # noqa: BLE001
+                container_cdp_url = await self._container_cdp_url(container_name)
+                if not container_cdp_url:
+                    raise host_exc
+                logger.warning(
+                    "provision_docker cdp_host_probe_failed container=%s published_url=%s fallback_url=%s error=%s",
+                    container_name,
+                    cdp_url,
+                    container_cdp_url,
+                    host_exc,
+                )
+                await self._wait_for_cdp_ready_url(container_cdp_url, timeout=self.cdp_ready_timeout)
+                cdp_url = container_cdp_url
+        except Exception as exc:  # noqa: BLE001
+            diagnostics = await self._collect_startup_diagnostics(container_name)
+            await self._safe_remove_container(container_name)
+            message = f"{exc}"
+            if diagnostics:
+                message = f"{message}. {diagnostics}"
+            raise type(exc)(message) from exc
 
         host = self.public_host.rstrip("/")
         browser_url = None
@@ -247,9 +302,8 @@ class ChromiumContainerProvisioner:
                 f"?agent_id={quote(owner_id, safe='')}"
             )
         events_url = f"{self.api_base_url}/sandboxes/{sandbox_id}/events"
-        cdp_url = f"http://127.0.0.1:{cdp_port}"
 
-        return ProvisionResult(
+        result = ProvisionResult(
             status=SandboxStatus.ready,
             browser_url=browser_url,
             dashboard_url=dashboard_url,
@@ -261,27 +315,123 @@ class ChromiumContainerProvisioner:
             artifacts_path=str(artifacts_path.resolve()),
             cdp_url=cdp_url,
         )
+        logger.info(
+            "provision_docker done sandbox_id=%s container_id=%s browser_url=%s cdp_url=%s artifacts_path=%s",
+            sandbox_id,
+            container_id,
+            result.browser_url,
+            result.cdp_url,
+            result.artifacts_path,
+        )
+        return result
 
     async def stop(self, sandbox_id: str, backend_ref: Optional[str]) -> None:
         container_name = backend_ref or f"cua_{sandbox_id}"
-        cmd = [self.docker_bin, "rm", "-f", container_name]
-        process = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        _, stderr = await process.communicate()
-        if process.returncode != 0:
-            raise RuntimeError(f"Docker rm failed: {stderr.decode().strip()}")
+        returncode, _stdout, stderr = await self._run_docker_command("rm", "-f", container_name)
+        if returncode != 0:
+            raise RuntimeError(f"Docker rm failed: {stderr}")
 
     def cdp_host(self) -> str:
         # API node reaches container via published port on localhost by default.
-        return "127.0.0.1"
+        return self._probe_host()
+
+    async def _run_docker_command(self, *args: str) -> tuple[int, str, str]:
+        process = await asyncio.create_subprocess_exec(
+            self.docker_bin,
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await process.communicate()
+        return process.returncode, stdout.decode().strip(), stderr.decode().strip()
+
+    def _probe_host(self) -> str:
+        if self.bind_host in {"", "0.0.0.0", "::"}:
+            return "127.0.0.1"
+        return self.bind_host
 
     async def _wait_for_port(self, port: int, timeout: float = 10.0) -> None:
         deadline = asyncio.get_event_loop().time() + timeout
+        host = self._probe_host()
         while asyncio.get_event_loop().time() < deadline:
             try:
-                with socket.create_connection(("127.0.0.1", port), timeout=1.0):
+                with socket.create_connection((host, port), timeout=1.0):
                     return
             except OSError:
                 await asyncio.sleep(0.25)
-        raise TimeoutError(f"Timed out waiting for port {port}")
+        raise TimeoutError(f"Timed out waiting for port {host}:{port}")
+
+    async def _wait_for_cdp_ready(self, port: int, timeout: float = 45.0) -> None:
+        url = f"http://{self._probe_host()}:{port}"
+        await self._wait_for_cdp_ready_url(url, timeout=timeout)
+
+    async def _wait_for_cdp_ready_url(self, base_url: str, timeout: float = 45.0) -> None:
+        deadline = asyncio.get_event_loop().time() + timeout
+        url = f"{base_url.rstrip('/')}/json/version"
+        last_error = None
+        while asyncio.get_event_loop().time() < deadline:
+            try:
+                def fetch() -> bytes:
+                    with urlopen(url, timeout=2.0) as response:
+                        return response.read()
+
+                payload = await asyncio.to_thread(fetch)
+                data = json.loads(payload.decode())
+                if data.get("webSocketDebuggerUrl"):
+                    logger.info("provision_docker cdp_ready url=%s", url)
+                    return
+            except Exception as exc:  # noqa: BLE001
+                last_error = str(exc)
+                await asyncio.sleep(0.5)
+        raise TimeoutError(f"Timed out waiting for CDP readiness at {url}: {last_error}")
+
+    async def _container_cdp_url(self, container_name: str) -> Optional[str]:
+        returncode, stdout, _stderr = await self._run_docker_command(
+            "inspect",
+            "--format",
+            "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
+            container_name,
+        )
+        if returncode != 0:
+            return None
+        ip_address = stdout.strip()
+        if not ip_address:
+            return None
+        return f"http://{ip_address}:{CDP_EXPOSED_PORT}"
+
+    async def _collect_startup_diagnostics(self, container_name: str) -> str:
+        diagnostics: list[str] = []
+        returncode, stdout, stderr = await self._run_docker_command(
+            "inspect",
+            "--format",
+            (
+                "status={{.State.Status}} "
+                "exit_code={{.State.ExitCode}} "
+                "started_at={{.State.StartedAt}} "
+                "finished_at={{.State.FinishedAt}} "
+                "error={{.State.Error}}"
+            ),
+            container_name,
+        )
+        if returncode == 0 and stdout:
+            diagnostics.append(f"container_state={stdout}")
+        elif stderr:
+            diagnostics.append(f"inspect_error={stderr}")
+
+        returncode, stdout, stderr = await self._run_docker_command("logs", "--tail", "50", container_name)
+        log_output = stdout or stderr
+        if returncode == 0 and log_output:
+            diagnostics.append(f"container_logs={log_output}")
+        elif stderr:
+            diagnostics.append(f"logs_error={stderr}")
+
+        details = "; ".join(diagnostics)
+        if details:
+            logger.warning("provision_docker startup_failed container=%s details=%s", container_name, details)
+        return details
+
+    async def _safe_remove_container(self, container_name: str) -> None:
+        try:
+            await self.stop(container_name.removeprefix("cua_"), backend_ref=container_name)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("provision_docker cleanup_failed container=%s error=%s", container_name, exc)

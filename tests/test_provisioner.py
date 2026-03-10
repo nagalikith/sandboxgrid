@@ -61,24 +61,20 @@ async def test_chromium_provision_success(monkeypatch, tmp_path):
         api_base_url="http://api",
     )
 
-    async def fake_wait(_port, timeout=10.0):
+    async def fake_wait(self, _port, timeout=10.0):
         return None
 
-    class DummyProcess:
-        def __init__(self, returncode=0, stdout=b"cid", stderr=b"") -> None:
-            self.returncode = returncode
-            self._stdout = stdout
-            self._stderr = stderr
+    async def fake_wait_for_cdp(self, _port, timeout=45.0):
+        return None
 
-        async def communicate(self):
-            return self._stdout, self._stderr
+    async def fake_run(self, *args):
+        assert args[0] == "run"
+        return 0, "cid", ""
 
-    async def fake_create(*_args, **_kwargs):
-        return DummyProcess()
-
-    monkeypatch.setattr("sandbox_api.provisioner._find_free_port", lambda: 1111)
-    monkeypatch.setattr("sandbox_api.provisioner.asyncio.create_subprocess_exec", fake_create)
+    monkeypatch.setattr("sandbox_api.sandboxes.provisioner._find_free_port", lambda: 1111)
+    monkeypatch.setattr(ChromiumContainerProvisioner, "_run_docker_command", fake_run)
     monkeypatch.setattr(ChromiumContainerProvisioner, "_wait_for_port", fake_wait)
+    monkeypatch.setattr(ChromiumContainerProvisioner, "_wait_for_cdp_ready", fake_wait_for_cdp)
 
     result = await prov.provision("sbx_1", SandboxRequest(), owner_id="user_a")
     assert isinstance(result, ProvisionResult)
@@ -97,18 +93,12 @@ async def test_chromium_provision_failure(monkeypatch, tmp_path):
         api_base_url="http://api",
     )
 
-    class DummyProcess:
-        def __init__(self) -> None:
-            self.returncode = 1
+    async def fake_run(self, *args):
+        assert args[0] == "run"
+        return 1, "", "boom"
 
-        async def communicate(self):
-            return b"", b"boom"
-
-    async def fake_create(*_args, **_kwargs):
-        return DummyProcess()
-
-    monkeypatch.setattr("sandbox_api.provisioner._find_free_port", lambda: 1111)
-    monkeypatch.setattr("sandbox_api.provisioner.asyncio.create_subprocess_exec", fake_create)
+    monkeypatch.setattr("sandbox_api.sandboxes.provisioner._find_free_port", lambda: 1111)
+    monkeypatch.setattr(ChromiumContainerProvisioner, "_run_docker_command", fake_run)
 
     with pytest.raises(RuntimeError):
         await prov.provision("sbx_1", SandboxRequest(), owner_id="user_a")
@@ -125,17 +115,11 @@ async def test_chromium_stop_failure(monkeypatch, tmp_path):
         api_base_url="http://api",
     )
 
-    class DummyProcess:
-        def __init__(self) -> None:
-            self.returncode = 1
+    async def fake_run(self, *args):
+        assert args[:2] == ("rm", "-f")
+        return 1, "", "bad"
 
-        async def communicate(self):
-            return b"", b"bad"
-
-    async def fake_create(*_args, **_kwargs):
-        return DummyProcess()
-
-    monkeypatch.setattr("sandbox_api.provisioner.asyncio.create_subprocess_exec", fake_create)
+    monkeypatch.setattr(ChromiumContainerProvisioner, "_run_docker_command", fake_run)
 
     with pytest.raises(RuntimeError):
         await prov.stop("sbx_1", backend_ref="cid")
@@ -158,3 +142,89 @@ async def test_wait_for_port_timeout(tmp_path, monkeypatch):
     monkeypatch.setattr(asyncio, "sleep", fake_sleep)
     with pytest.raises(TimeoutError):
         await prov._wait_for_port(1234, timeout=0)
+
+
+@pytest.mark.asyncio
+async def test_chromium_provision_timeout_collects_diagnostics(monkeypatch, tmp_path):
+    prov = ChromiumContainerProvisioner(
+        docker_bin="docker",
+        image="image",
+        artifacts_root=tmp_path,
+        artifacts_mode="per-sandbox",
+        public_host="http://host",
+        api_base_url="http://api",
+    )
+
+    calls = []
+
+    async def fake_wait(self, _port, timeout=10.0):
+        return None
+
+    async def fake_wait_for_cdp(self, _port, timeout=45.0):
+        raise TimeoutError("Timed out waiting for CDP readiness at http://127.0.0.1:1111/json/version")
+
+    async def fake_run(self, *args):
+        calls.append(args)
+        if args[0] == "run":
+            return 0, "cid", ""
+        if args[0] == "inspect":
+            return 0, "status=exited exit_code=1 started_at=a finished_at=b error=boom", ""
+        if args[0] == "logs":
+            return 0, "Error: CDP not accessible", ""
+        if args[0] == "rm":
+            return 0, "cid", ""
+        raise AssertionError(args)
+
+    monkeypatch.setattr("sandbox_api.sandboxes.provisioner._find_free_port", lambda: 1111)
+    monkeypatch.setattr(ChromiumContainerProvisioner, "_run_docker_command", fake_run)
+    monkeypatch.setattr(ChromiumContainerProvisioner, "_wait_for_port", fake_wait)
+    monkeypatch.setattr(ChromiumContainerProvisioner, "_wait_for_cdp_ready", fake_wait_for_cdp)
+
+    with pytest.raises(TimeoutError, match="container_state=status=exited"):
+        await prov.provision("sbx_1", SandboxRequest(), owner_id="user_a")
+
+    assert ("rm", "-f", "cua_sbx_1") in calls
+
+
+@pytest.mark.asyncio
+async def test_chromium_provision_falls_back_to_container_ip(monkeypatch, tmp_path):
+    prov = ChromiumContainerProvisioner(
+        docker_bin="docker",
+        image="image",
+        artifacts_root=tmp_path,
+        artifacts_mode="per-sandbox",
+        public_host="http://host",
+        api_base_url="http://api",
+    )
+
+    ports = iter([2111, 3222])
+    seen_urls = []
+
+    async def fake_wait_for_port(self, port, timeout=10.0):
+        assert port in {2111, 3222}
+        return None
+
+    async def fake_wait_for_cdp_ready_url(self, url, timeout=45.0):
+        seen_urls.append(url)
+        if url == "http://127.0.0.1:3222":
+            raise TimeoutError("host probe failed")
+        if url == "http://172.17.0.5:9222":
+            return None
+        raise AssertionError(url)
+
+    async def fake_run(self, *args):
+        if args[0] == "run":
+            return 0, "cid", ""
+        if args[0] == "inspect":
+            return 0, "172.17.0.5", ""
+        raise AssertionError(args)
+
+    monkeypatch.setattr("sandbox_api.sandboxes.provisioner._find_free_port", lambda: next(ports))
+    monkeypatch.setattr(ChromiumContainerProvisioner, "_run_docker_command", fake_run)
+    monkeypatch.setattr(ChromiumContainerProvisioner, "_wait_for_port", fake_wait_for_port)
+    monkeypatch.setattr(ChromiumContainerProvisioner, "_wait_for_cdp_ready_url", fake_wait_for_cdp_ready_url)
+
+    result = await prov.provision("sbx_1", SandboxRequest(), owner_id="user_a")
+
+    assert result.cdp_url == "http://172.17.0.5:9222"
+    assert seen_urls == ["http://127.0.0.1:3222", "http://172.17.0.5:9222"]
