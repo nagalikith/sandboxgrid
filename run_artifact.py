@@ -79,6 +79,7 @@ class BrowserRunner:
         update_overlay(page, "status", {"text": "Agent connected to browser"})
         return browser, context, page
 
+
 def inject_overlay(page):
     """Inject a visual overlay to show agent actions"""
     js = """
@@ -131,17 +132,6 @@ def update_overlay(page, action_type, data):
     except:
         pass
 
-
-    context = browser.contexts[0]
-    page = context.pages[0] if context.pages else context.new_page()
-    try:
-        page.bring_to_front()
-    except Exception:
-        pass
-    inject_overlay(page)
-    update_overlay(page, "status", {"text": "Agent connected to browser"})
-    return browser, context, page
-
 class InteractiveController:
     """Handles user interaction and control after automated tasks"""
     
@@ -149,6 +139,7 @@ class InteractiveController:
         self.page = page
         self.cfg = cfg
         self.recorder = recorder
+        self.log = recorder.log if recorder else make_logger(cfg)
         self.running = True
         self.monitoring = False
         
@@ -158,14 +149,14 @@ class InteractiveController:
             return
             
         self.monitoring = True
-        log("User control enabled - browser ready for manual interaction")
+        self.log("User control enabled - browser ready for manual interaction")
         inject_overlay(self.page)
         
         # Setup interaction recording
         def on_interaction(action_type, data):
             if self.recorder:
                 self.recorder.record_action(action_type, data)
-                log(f"Recorded {action_type}")
+                self.log(f"Recorded {action_type}")
 
         try:
             self.page.expose_function("record_interaction", lambda t, d: on_interaction(t, d))
@@ -213,7 +204,7 @@ class InteractiveController:
         def on_navigate(frame):
             if self.recorder and frame == self.page.main_frame:
                 self.recorder.record_action("navigate", {"url": frame.url})
-                log(f"Recorded navigation: {frame.url}")
+                self.log(f"Recorded navigation: {frame.url}")
         
         self.page.on("framenavigated", on_navigate)
     
@@ -309,7 +300,8 @@ class InteractiveController:
                     
                 if parts[1].lower() == "on":
                     if not self.recorder:
-                        self.recorder = SessionRecorder()
+                        self.recorder = SessionRecorder(self.cfg)
+                        self.log = self.recorder.log
                         print(f"✓ Recording started: {self.recorder.session_id}")
                     else:
                         print("✓ Recording already active")
@@ -633,8 +625,11 @@ def import_artifact(cfg: RuntimeConfig, artifact_path: str) -> str:
     with tarfile.open(artifact_path, "r:gz") as tar:
         tar.extractall(path=cfg.sessions_dir)
     
-    # Extract session_id from artifact filename
-    session_id = Path(artifact_path).stem
+    artifact_name = Path(artifact_path).name
+    if artifact_name.endswith(".tar.gz"):
+        session_id = artifact_name[:-7]
+    else:
+        session_id = Path(artifact_path).stem
     log(f"Artifact imported: {session_id}")
     
     return session_id

@@ -41,6 +41,8 @@ class GradingJobRequest(BaseModel):
     grading_llm_model: Optional[str] = None
     annotation_llm_base: Optional[str] = None
     annotation_llm_model: Optional[str] = None
+    grade_result_path: Optional[str] = None
+    reuse_latest_grade: bool = False
     strict_ui_checks: bool = True
     output_dir: Optional[str] = None
 

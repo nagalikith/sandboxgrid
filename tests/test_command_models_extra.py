@@ -32,3 +32,8 @@ def test_steps_request_requires_steps():
 def test_step_allows_optional_name():
     step = Step(action="screenshot", name="after-login")
     assert step.name == "after-login"
+
+
+def test_step_allows_optional_flag():
+    step = Step(action="click", selector="#id", optional=True)
+    assert step.optional is True

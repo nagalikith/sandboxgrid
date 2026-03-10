@@ -11,9 +11,14 @@ import traceback
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from playwright.sync_api import sync_playwright
+
+from .core.env import load_repo_env
+
+load_repo_env()
 
 from .sandboxes.agent_planner import plan_steps
 from .artifacts import ArtifactRecord, ArtifactRepository, ArtifactStore
@@ -21,7 +26,7 @@ from .dashboards.charts_renderer import render_dashboard_charts
 from .dashboards.router import save_dashboard_payload
 from .core.database import init_db, engine
 from .apps.education.jobs import GradingJobStatus, grading_job_repo
-from .apps.education.runner import GradeStudentArgs, run_grade_student
+from .apps.education.runner import BrowserApplyError, GradeStudentArgs, run_grade_student
 from .core.jobs import CommandJob, DashboardUpdateJob, GradingJob, ProvisionJob, parse_job
 from .sandboxes.models import SandboxRecord, SandboxRequest, SandboxStatus
 from .sandboxes.command_models import StepsRequest
@@ -43,6 +48,8 @@ except Exception as exc:  # noqa: BLE001
 
 
 logger = logging.getLogger("sandbox.worker")
+_PAGE_POINTER_STATE: dict[int, tuple[float, float]] = {}
+_PAGE_CDP_SESSIONS: dict[int, Any] = {}
 
 
 def _now_iso() -> str:
@@ -107,7 +114,55 @@ def _write_text(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def _build_grade_student_args(payload, internal_secret: str, owner_id: Optional[str] = None) -> GradeStudentArgs:
+def _artifact_matches_canvas_base(artifact: ArtifactRecord, canvas_base: str) -> bool:
+    canvas_host = (urlparse(canvas_base).hostname or "").lower()
+    if not canvas_host:
+        return True
+    attributes = artifact.attributes or {}
+    candidate_hosts: list[str] = []
+    for key in ("origin", "url"):
+        value = attributes.get(key)
+        if isinstance(value, str):
+            host = urlparse(value).hostname
+            if host:
+                candidate_hosts.append(host.lower())
+    domain = attributes.get("domain")
+    if isinstance(domain, str) and domain.strip():
+        candidate_hosts.append(domain.strip().lower().lstrip("."))
+    for host in candidate_hosts:
+        if canvas_host == host or canvas_host.endswith(f".{host}") or host.endswith(f".{canvas_host}"):
+            return True
+    return False
+
+
+def _resolve_latest_session_share_profile_artifact_id(
+    artifact_repo: ArtifactRepository,
+    *,
+    owner_id: Optional[str],
+    canvas_base: str,
+) -> Optional[str]:
+    if not owner_id:
+        return None
+    records = artifact_repo.list(
+        owner_id=owner_id,
+        artifact_type="browser_profile",
+        source="session_share",
+        limit=20,
+    )
+    if not records:
+        return None
+    for artifact in records:
+        if _artifact_matches_canvas_base(artifact, canvas_base):
+            return artifact.artifact_id
+    return records[0].artifact_id
+
+
+def _build_grade_student_args(
+    payload,
+    internal_secret: str,
+    owner_id: Optional[str] = None,
+    artifact_repo: Optional[ArtifactRepository] = None,
+) -> GradeStudentArgs:
     canvas_token = payload.canvas_token or os.getenv("CANVAS_TOKEN")
     if not canvas_token:
         raise RuntimeError("Missing Canvas token; set canvas_token or CANVAS_TOKEN.")
@@ -127,7 +182,7 @@ def _build_grade_student_args(payload, internal_secret: str, owner_id: Optional[
         or os.getenv("GRADING_LLM_MODEL")
         or os.getenv("FIREWORKS_GRADING_MODEL")
         or os.getenv("LLM_MODEL")
-        or "accounts/fireworks/models/llama-v3p1-70b-instruct"
+        or "accounts/fireworks/models/kimi-k2p5"
     )
     grading_llm_key = (
         os.getenv("GRADING_LLM_API_KEY")
@@ -173,6 +228,26 @@ def _build_grade_student_args(payload, internal_secret: str, owner_id: Optional[
     agent_id = payload.agent_id or owner_id or os.getenv("SANDBOX_AGENT_ID", "grader")
     output_dir = payload.output_dir or "./artifacts/grading_runs"
     policy = payload.policy or ""
+    resolved_profile_artifact_id = payload.profile_artifact_id
+    if not resolved_profile_artifact_id:
+        repo = artifact_repo or ArtifactRepository(engine)
+        resolved_profile_artifact_id = _resolve_latest_session_share_profile_artifact_id(
+            repo,
+            owner_id=owner_id,
+            canvas_base=str(payload.canvas_base),
+        )
+    logger.info(
+        "grading_args_resolved owner_id=%s course_id=%s assignment_id=%s student_id=%s sandbox_id=%s profile_artifact_id=%s grading_model=%s extraction_model=%s annotation_model=%s",
+        owner_id,
+        payload.course_id,
+        payload.assignment_id,
+        payload.student_id,
+        payload.sandbox_id,
+        resolved_profile_artifact_id,
+        grading_llm_model,
+        extraction_llm_model,
+        annotation_llm_model,
+    )
 
     return GradeStudentArgs(
         course_id=payload.course_id,
@@ -184,7 +259,7 @@ def _build_grade_student_args(payload, internal_secret: str, owner_id: Optional[
         sandbox_api=sandbox_api,
         agent_id=agent_id,
         sandbox_id=payload.sandbox_id,
-        profile_artifact_id=payload.profile_artifact_id,
+        profile_artifact_id=resolved_profile_artifact_id,
         policy=policy,
         selectors_json=payload.selectors_json,
         output_dir=output_dir,
@@ -200,6 +275,8 @@ def _build_grade_student_args(payload, internal_secret: str, owner_id: Optional[
         annotation_llm_base=annotation_llm_base,
         annotation_llm_key=annotation_llm_key,
         annotation_llm_model=annotation_llm_model,
+        grade_result_path=payload.grade_result_path,
+        reuse_latest_grade=payload.reuse_latest_grade,
         navigation_mode=payload.navigation_mode,
         strict_ui_checks=payload.strict_ui_checks,
     )
@@ -220,6 +297,7 @@ class InternalSandboxOps:
         self._artifact_store = ArtifactStore(Path(os.getenv("SANDBOX_ARTIFACTS_ROOT", "./artifacts")))
 
     def create_sandbox(self, ttl_seconds: int = 3600) -> dict[str, Any]:
+        logger.info("internal_sandbox create_start owner_id=%s ttl_seconds=%s", self.owner_id, ttl_seconds)
         request = SandboxRequest(ttl_seconds=ttl_seconds)
         now = datetime.now(timezone.utc)
         sandbox_id = f"sbx_{uuid4().hex[:8]}"
@@ -259,12 +337,22 @@ class InternalSandboxOps:
                 artifacts_path=result.artifacts_path,
                 cdp_url=result.cdp_url,
             )
+            logger.info(
+                "internal_sandbox create_done sandbox_id=%s browser_url=%s cdp_url=%s cdp_port=%s artifacts_path=%s",
+                sandbox_id,
+                result.browser_url,
+                result.cdp_url,
+                result.cdp_port,
+                result.artifacts_path,
+            )
         except Exception as exc:  # noqa: BLE001
             self._repository.set_error(sandbox_id, message=f"Provisioning failed: {exc}")
+            logger.exception("internal_sandbox create_failed sandbox_id=%s error=%s", sandbox_id, exc)
             raise
         return {"sandbox_id": sandbox_id}
 
     def wait_ready(self, sandbox_id: str, timeout: int = 180) -> dict[str, Any]:
+        logger.info("internal_sandbox wait_ready_start sandbox_id=%s timeout=%s", sandbox_id, timeout)
         deadline = time.time() + timeout
         while time.time() < deadline:
             record = self._repository.get(sandbox_id)
@@ -273,6 +361,7 @@ class InternalSandboxOps:
             if record.owner_id != self.owner_id:
                 raise RuntimeError("Sandbox owner mismatch.")
             if record.status == SandboxStatus.ready:
+                logger.info("internal_sandbox wait_ready_done sandbox_id=%s", sandbox_id)
                 return record.dict()
             if record.status == SandboxStatus.error:
                 raise RuntimeError(f"Sandbox error: {record.message}")
@@ -291,6 +380,13 @@ class InternalSandboxOps:
         command_id = f"cmd_{uuid4().hex[:8]}"
         request = StepsRequest.parse_obj(steps_payload)
         cfg = build_runtime_config(record)
+        logger.info(
+            "internal_sandbox run_steps sandbox_id=%s command_id=%s step_count=%s profile_artifact_id=%s",
+            sandbox_id,
+            command_id,
+            len(request.steps),
+            getattr(request, "profile_artifact_id", None),
+        )
 
         def emit_event(payload: dict[str, Any]) -> None:  # noqa: ARG001
             return None
@@ -535,15 +631,21 @@ def _capture_page_state(
     return llm_context, artifact_ids
 
 
-def _build_locators(page, step) -> list:
+def _build_selector_locators(target, selector, selector_fallbacks) -> list:
     locators = []
     selectors: list[str] = []
-    if step.selector:
-        selectors.append(step.selector)
-    if step.selector_fallbacks:
-        selectors.extend(step.selector_fallbacks)
-    for selector in selectors:
-        locators.append(page.locator(selector))
+    if selector:
+        selectors.append(selector)
+    if selector_fallbacks:
+        selectors.extend(selector_fallbacks)
+    for value in selectors:
+        locators.append(target.locator(value))
+    return locators
+
+
+def _build_locators(page, step) -> list:
+    locators = []
+    locators.extend(_build_selector_locators(page, step.selector, step.selector_fallbacks))
     if step.role:
         try:
             locators.append(page.get_by_role(step.role, name=step.role_name))
@@ -567,8 +669,220 @@ def _build_locators(page, step) -> list:
     return locators
 
 
+def _ensure_visual_cursor(page) -> None:
+    try:
+        page.evaluate(
+            """
+            (() => {
+              if (document.getElementById('agent-pointer')) return;
+              const dot = document.createElement('div');
+              dot.id = 'agent-pointer';
+              dot.style.cssText = [
+                'position:fixed',
+                'left:0',
+                'top:0',
+                'width:18px',
+                'height:18px',
+                'margin-left:-9px',
+                'margin-top:-9px',
+                'border-radius:9999px',
+                'background:rgba(255,64,64,0.9)',
+                'border:2px solid #fff',
+                'box-shadow:0 0 0 2px rgba(255,64,64,0.35)',
+                'z-index:2147483646',
+                'pointer-events:none',
+                'transform:translate(-100px,-100px)',
+                'transition:transform 40ms linear, background 80ms ease'
+              ].join(';');
+              document.documentElement.appendChild(dot);
+            })();
+            """
+        )
+    except Exception:
+        pass
+
+
+def _move_visual_cursor(page, x: float, y: float, *, pressed: bool = False) -> None:
+    _ensure_visual_cursor(page)
+    color = "rgba(255,64,64,0.95)" if pressed else "rgba(255,179,0,0.95)"
+    scale = "0.9" if pressed else "1"
+    try:
+        page.evaluate(
+            """
+            ([px, py, bg, scale]) => {
+              const dot = document.getElementById('agent-pointer');
+              if (!dot) return;
+              dot.style.transform = `translate(${px}px, ${py}px) scale(${scale})`;
+              dot.style.background = bg;
+            }
+            """,
+            [x, y, color, scale],
+        )
+    except Exception:
+        pass
+
+
+def _get_cdp_session(page):
+    page_id = id(page)
+    cached = _PAGE_CDP_SESSIONS.get(page_id)
+    if cached is not None:
+        return cached
+    try:
+        session = page.context.new_cdp_session(page)
+    except Exception:
+        session = None
+    _PAGE_CDP_SESSIONS[page_id] = session
+    return session
+
+
+def _dispatch_mouse_event(page, event_type: str, x: float, y: float, *, button: str = "left", buttons: int = 0) -> bool:
+    session = _get_cdp_session(page)
+    if session is None:
+        return False
+    try:
+        session.send(
+            "Input.dispatchMouseEvent",
+            {
+                "type": event_type,
+                "x": x,
+                "y": y,
+                "button": button,
+                "buttons": buttons,
+                "pointerType": "mouse",
+                "clickCount": 1,
+            },
+        )
+        return True
+    except Exception:
+        return False
+
+
+def _pointer_move(page, x: float, y: float, *, steps: int = 1, pressed: bool = False) -> None:
+    page_id = id(page)
+    prev = _PAGE_POINTER_STATE.get(page_id, (x, y))
+    steps = max(1, steps)
+    for index in range(1, steps + 1):
+        ratio = index / steps
+        px = prev[0] + (x - prev[0]) * ratio
+        py = prev[1] + (y - prev[1]) * ratio
+        _move_visual_cursor(page, px, py, pressed=pressed)
+        if not _dispatch_mouse_event(page, "mouseMoved", px, py, buttons=1 if pressed else 0):
+            page.mouse.move(px, py, steps=1)
+    _PAGE_POINTER_STATE[page_id] = (x, y)
+
+
+def _pointer_down(page, x: float, y: float) -> None:
+    _pointer_move(page, x, y, steps=1, pressed=False)
+    _move_visual_cursor(page, x, y, pressed=True)
+    if not _dispatch_mouse_event(page, "mousePressed", x, y, button="left", buttons=1):
+        page.mouse.down()
+    _PAGE_POINTER_STATE[id(page)] = (x, y)
+
+
+def _pointer_up(page, x: float, y: float) -> None:
+    _pointer_move(page, x, y, steps=1, pressed=True)
+    if not _dispatch_mouse_event(page, "mouseReleased", x, y, button="left", buttons=0):
+        page.mouse.up()
+    _move_visual_cursor(page, x, y, pressed=False)
+    _PAGE_POINTER_STATE[id(page)] = (x, y)
+
+
+def _pointer_click(page, x: float, y: float) -> None:
+    _pointer_move(page, x, y, steps=6, pressed=False)
+    _pointer_down(page, x, y)
+    page.wait_for_timeout(60)
+    _pointer_up(page, x, y)
+
+
+def _describe_step(step) -> str:
+    parts: list[str] = []
+    if step.name:
+        parts.append(f"name={step.name!r}")
+    if step.url:
+        parts.append(f"url={step.url!r}")
+    if step.frame_selector:
+        parts.append(f"frame_selector={step.frame_selector!r}")
+    if step.frame_selector_fallbacks:
+        parts.append(f"frame_selector_fallbacks={step.frame_selector_fallbacks!r}")
+    if step.skip_if_selector:
+        parts.append(f"skip_if_selector={step.skip_if_selector!r}")
+    if step.skip_if_selector_fallbacks:
+        parts.append(f"skip_if_selector_fallbacks={step.skip_if_selector_fallbacks!r}")
+    if step.optional:
+        parts.append("optional=True")
+    if step.selector:
+        parts.append(f"selector={step.selector!r}")
+    if step.selector_fallbacks:
+        parts.append(f"selector_fallbacks={step.selector_fallbacks!r}")
+    if step.role:
+        parts.append(f"role={step.role!r}")
+    if step.role_name:
+        parts.append(f"role_name={step.role_name!r}")
+    if step.label:
+        parts.append(f"label={step.label!r}")
+    if step.placeholder:
+        parts.append(f"placeholder={step.placeholder!r}")
+    if step.target_text:
+        parts.append(f"target_text={step.target_text!r}")
+    if step.timeout_ms:
+        parts.append(f"timeout_ms={step.timeout_ms}")
+    if step.retries:
+        parts.append(f"retries={step.retries}")
+    if step.wait_ms:
+        parts.append(f"wait_ms={step.wait_ms}")
+    return ", ".join(parts)
+
+
+def _resolve_frame_from_locators(page, locators, *, timeout: int, retries: int):
+    if not locators:
+        raise RuntimeError("No locators available for frame.")
+    last_exc: Exception | None = None
+    for attempt in range(retries):
+        for locator in locators:
+            try:
+                target = locator.first
+                target.wait_for(state="visible", timeout=timeout)
+                handle = target.element_handle()
+                if handle:
+                    frame = handle.content_frame()
+                    if frame is not None:
+                        return frame
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+        if attempt < retries - 1:
+            page.wait_for_timeout(300)
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("Failed to resolve target frame.")
+
+
+def _resolve_step_scope(page, step):
+    if not step.frame_selector and not step.frame_selector_fallbacks:
+        return page
+    timeout = step.timeout_ms or 30000
+    retries = step.retries or int(os.getenv("SANDBOX_STEP_RETRIES", "1"))
+    locators = _build_selector_locators(page, step.frame_selector, step.frame_selector_fallbacks)
+    return _resolve_frame_from_locators(page, locators, timeout=timeout, retries=retries)
+
+
+def _step_should_skip(page, step) -> bool:
+    if not step.skip_if_selector and not step.skip_if_selector_fallbacks:
+        return False
+    scope = _resolve_step_scope(page, step)
+    timeout = min(step.timeout_ms or 30000, 500)
+    locators = _build_selector_locators(scope, step.skip_if_selector, step.skip_if_selector_fallbacks)
+    for locator in locators:
+        try:
+            locator.first.wait_for(state="visible", timeout=timeout)
+            return True
+        except Exception:
+            continue
+    return False
+
+
 def _resolve_target_box(page, step):
-    locators = _build_locators(page, step)
+    scope = _resolve_step_scope(page, step)
+    locators = _build_locators(scope, step)
     if not locators:
         raise RuntimeError("No locators available for draw_path.")
     timeout = step.timeout_ms or 30000
@@ -597,33 +911,17 @@ def _resolve_target_box(page, step):
 
 def _resolve_target_frame(page, step):
     locators = _build_locators(page, step)
-    if not locators:
-        raise RuntimeError("No locators available for frame.")
     timeout = step.timeout_ms or 30000
     retries = step.retries or int(os.getenv("SANDBOX_STEP_RETRIES", "1"))
-    last_exc: Exception | None = None
-    for attempt in range(retries):
-        for locator in locators:
-            try:
-                target = locator.first
-                target.wait_for(state="visible", timeout=timeout)
-                handle = target.element_handle()
-                if handle:
-                    frame = handle.content_frame()
-                    if frame is not None:
-                        return frame
-            except Exception as exc:  # noqa: BLE001
-                last_exc = exc
-        if attempt < retries - 1:
-            page.wait_for_timeout(300)
-    if last_exc:
-        raise last_exc
-    raise RuntimeError("Failed to resolve target frame.")
+    return _resolve_frame_from_locators(page, locators, timeout=timeout, retries=retries)
 
 
 def _perform_locator_action(page, step, action_name: str) -> None:
-    locators = _build_locators(page, step)
+    scope = _resolve_step_scope(page, step)
+    locators = _build_locators(scope, step)
     if not locators:
+        if step.optional:
+            return
         raise RuntimeError(f"No locators available for {action_name}.")
     timeout = step.timeout_ms or 30000
     retries = step.retries or int(os.getenv("SANDBOX_STEP_RETRIES", "1"))
@@ -633,6 +931,10 @@ def _perform_locator_action(page, step, action_name: str) -> None:
             try:
                 target = locator.first
                 target.wait_for(state="visible", timeout=timeout)
+                try:
+                    target.scroll_into_view_if_needed(timeout=timeout)
+                except Exception:
+                    pass
                 if action_name == "click":
                     target.click(timeout=timeout)
                 elif action_name == "type":
@@ -650,7 +952,17 @@ def _perform_locator_action(page, step, action_name: str) -> None:
         if attempt < retries - 1:
             page.wait_for_timeout(300)
     if last_exc:
+        if step.optional:
+            return
+        details = _describe_step(step)
+        if details:
+            raise RuntimeError(f"Failed to perform {action_name} ({details}): {last_exc}") from last_exc
         raise last_exc
+    details = _describe_step(step)
+    if step.optional:
+        return
+    if details:
+        raise RuntimeError(f"Failed to perform {action_name} ({details}).")
     raise RuntimeError(f"Failed to perform {action_name}.")
 
 def _register_screenshot(
@@ -768,7 +1080,14 @@ def _execute_steps(
     artifact_ids: list[str] = []
     for index, step in enumerate(request.steps, start=1):
         step_label = f"{index:02d}_{step.action}"
-        log(f"Step {index}: {step.action}")
+        details = _describe_step(step)
+        if details:
+            log(f"Step {index}: {step.action} [{details}]")
+        else:
+            log(f"Step {index}: {step.action}")
+        if _step_should_skip(page, step):
+            log(f"Step {index}: skipped because existing selector matched")
+            continue
         update_overlay(page, step.action, step.dict())
         timeout = step.timeout_ms or 30000
         if step.action == "goto":
@@ -803,13 +1122,13 @@ def _execute_steps(
             start = points[0]
             start_x = box["x"] + start.x * box["width"]
             start_y = box["y"] + start.y * box["height"]
-            page.mouse.move(start_x, start_y)
-            page.mouse.down()
+            _pointer_move(page, start_x, start_y, steps=12, pressed=False)
+            _pointer_down(page, start_x, start_y)
             for point in points[1:]:
                 x = box["x"] + point.x * box["width"]
                 y = box["y"] + point.y * box["height"]
-                page.mouse.move(x, y, steps=8)
-            page.mouse.up()
+                _pointer_move(page, x, y, steps=12, pressed=True)
+            _pointer_up(page, x, y)
         elif step.action == "draw_rect":
             box = _resolve_target_box(page, step)
             points = step.points or []
@@ -821,10 +1140,10 @@ def _execute_steps(
             start_y = box["y"] + start.y * box["height"]
             end_x = box["x"] + end.x * box["width"]
             end_y = box["y"] + end.y * box["height"]
-            page.mouse.move(start_x, start_y)
-            page.mouse.down()
-            page.mouse.move(end_x, end_y, steps=12)
-            page.mouse.up()
+            _pointer_move(page, start_x, start_y, steps=12, pressed=False)
+            _pointer_down(page, start_x, start_y)
+            _pointer_move(page, end_x, end_y, steps=18, pressed=True)
+            _pointer_up(page, end_x, end_y)
         elif step.action == "point":
             box = _resolve_target_box(page, step)
             target = step.point
@@ -832,7 +1151,7 @@ def _execute_steps(
                 raise RuntimeError("point requires point.")
             x = box["x"] + target.x * box["width"]
             y = box["y"] + target.y * box["height"]
-            page.mouse.click(x, y)
+            _pointer_click(page, x, y)
         elif step.action == "freetext":
             box = _resolve_target_box(page, step)
             target = step.point
@@ -840,7 +1159,7 @@ def _execute_steps(
                 raise RuntimeError("freetext requires point.")
             x = box["x"] + target.x * box["width"]
             y = box["y"] + target.y * box["height"]
-            page.mouse.click(x, y)
+            _pointer_click(page, x, y)
             if step.text:
                 page.keyboard.type(step.text)
         elif step.action == "dom_snapshot":
@@ -892,8 +1211,9 @@ def _execute_steps(
 
         if step.action == "dom_snapshot":
             name = _safe_filename(step.name or step_label)
+            scope = _resolve_step_scope(page, step)
             if step.snapshot_format == "a11y_json":
-                root = page.query_selector(step.selector) if step.selector else None
+                root = scope.query_selector(step.selector) if step.selector else None
                 snapshot = page.accessibility.snapshot(root=root)
                 content = json.dumps(snapshot or {}, ensure_ascii=True, indent=2)
                 filename = f"{name}.json"
@@ -913,12 +1233,12 @@ def _execute_steps(
                 )
             else:
                 if step.selector:
-                    element = page.query_selector(step.selector)
+                    element = scope.query_selector(step.selector)
                     if not element:
                         raise RuntimeError(f"Selector not found: {step.selector}")
                     content = element.evaluate("el => el.outerHTML")
                 else:
-                    content = page.content()
+                    content = scope.content()
                 filename = f"{name}.html"
                 file_path = base_dir / filename
                 file_path.write_text(content, encoding="utf-8")
@@ -1464,6 +1784,7 @@ async def handle_dashboard_update(
 
 
 async def handle_grading_job(job: GradingJob) -> None:
+    logger.info("grading_job_worker start job_id=%s owner_id=%s", job.job_id, job.owner_id)
     now = datetime.now(timezone.utc)
     grading_job_repo.update(
         job.job_id,
@@ -1473,6 +1794,7 @@ async def handle_grading_job(job: GradingJob) -> None:
     )
     internal_secret = os.getenv("INTERNAL_AUTH_SECRET")
     if not internal_secret:
+        logger.error("grading_job_worker missing_internal_auth_secret job_id=%s", job.job_id)
         now = datetime.now(timezone.utc)
         grading_job_repo.update(
             job.job_id,
@@ -1487,6 +1809,13 @@ async def handle_grading_job(job: GradingJob) -> None:
         args = _build_grade_student_args(job.payload, internal_secret, owner_id=job.owner_id)
         sandbox_ops = InternalSandboxOps(owner_id=job.owner_id)
         outcome = await asyncio.to_thread(run_grade_student, args, sandbox_ops)
+        logger.info(
+            "grading_job_worker success job_id=%s run_dir=%s grade_result_path=%s llm_observability_path=%s",
+            job.job_id,
+            outcome.run_dir,
+            outcome.grade_result_path,
+            outcome.llm_observability_path,
+        )
         grading_job_repo.update(
             job.job_id,
             status=GradingJobStatus.succeeded.value,
@@ -1494,13 +1823,31 @@ async def handle_grading_job(job: GradingJob) -> None:
                 "run_dir": str(outcome.run_dir.resolve()),
                 "grade_result_path": str(outcome.grade_result_path.resolve()),
                 "speedgrader_state_path": str(outcome.speedgrader_state_path.resolve()),
+                "llm_observability_path": str(outcome.llm_observability_path.resolve()),
                 "stdout_tail": "",
                 "stderr_tail": "",
             },
             updated_at=datetime.now(timezone.utc),
             finished_at=datetime.now(timezone.utc),
         )
+    except BrowserApplyError as exc:
+        logger.exception("grading_job_worker browser_apply_failed job_id=%s error=%s", job.job_id, exc)
+        grading_job_repo.update(
+            job.job_id,
+            status=GradingJobStatus.failed.value,
+            error_message=_truncate_text(str(exc)),
+            result={
+                "run_dir": str(exc.run_dir.resolve()),
+                "grade_result_path": str(exc.grade_result_path.resolve()),
+                "llm_observability_path": str(exc.llm_observability_path.resolve()),
+                "speedgrader_state_path": str(exc.speedgrader_state_path.resolve()) if exc.speedgrader_state_path else None,
+                "traceback": _truncate_text(traceback.format_exc()),
+            },
+            updated_at=datetime.now(timezone.utc),
+            finished_at=datetime.now(timezone.utc),
+        )
     except Exception as exc:  # noqa: BLE001
+        logger.exception("grading_job_worker failed job_id=%s error=%s", job.job_id, exc)
         grading_job_repo.update(
             job.job_id,
             status=GradingJobStatus.failed.value,

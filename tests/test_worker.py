@@ -17,10 +17,12 @@ from sandbox_api.platform import worker
 
 
 class DummyLocator:
-    def __init__(self, *, fail_once=False) -> None:
+    def __init__(self, *, fail_once=False, element_handle=None, box=None) -> None:
         self.fail_once = fail_once
         self.failed = False
         self.calls = []
+        self._element_handle = element_handle
+        self._box = box or {"x": 10, "y": 20, "width": 100, "height": 200}
 
     @property
     def first(self):
@@ -41,6 +43,25 @@ class DummyLocator:
     def type(self, _text, **_kwargs):
         self.calls.append("type")
 
+    def element_handle(self):
+        self.calls.append("element_handle")
+        return self._element_handle
+
+    def bounding_box(self):
+        self.calls.append("bounding_box")
+        return self._box
+
+    def scroll_into_view_if_needed(self, **_kwargs):
+        self.calls.append("scroll_into_view_if_needed")
+
+
+class DummyFrameHandle:
+    def __init__(self, frame) -> None:
+        self._frame = frame
+
+    def content_frame(self):
+        return self._frame
+
 
 class DummyElement:
     def evaluate(self, _script):
@@ -52,17 +73,36 @@ class DummyAccessibility:
         return {"role": "root"}
 
 
+class DummyMouse:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def move(self, x, y, **_kwargs):
+        self.calls.append(("move", x, y))
+
+    def down(self, **_kwargs):
+        self.calls.append(("down",))
+
+    def up(self, **_kwargs):
+        self.calls.append(("up",))
+
+    def click(self, x, y, **_kwargs):
+        self.calls.append(("click", x, y))
+
+
 class DummyPage:
-    def __init__(self, *, fail_role=False) -> None:
+    def __init__(self, *, fail_role=False, locator_map=None) -> None:
         self._locator = DummyLocator(fail_once=True)
         self._role_fail = fail_role
+        self._locator_map = locator_map or {}
         self.accessibility = DummyAccessibility()
+        self.mouse = DummyMouse()
         self.viewport_size = {"width": 800, "height": 600}
         self.url = "https://example.com"
         self._title = "Example"
 
-    def locator(self, _selector):
-        return self._locator
+    def locator(self, selector):
+        return self._locator_map.get(selector, self._locator)
 
     def get_by_role(self, _role, name=None):
         if self._role_fail:
@@ -96,7 +136,7 @@ class DummyPage:
     def title(self):
         return self._title
 
-    def evaluate(self, script):
+    def evaluate(self, script, *_args):
         if "innerText" in script:
             return "Hello"
         if "querySelectorAll('form')" in script:
@@ -222,6 +262,68 @@ def test_build_grade_student_args_prefers_split_llm_envs(monkeypatch):
     assert args.annotation_llm_model == "accounts/fireworks/models/qwen2p5-vl-32b-instruct"
 
 
+def test_build_grade_student_args_auto_resolves_latest_shared_profile(monkeypatch):
+    monkeypatch.setenv("CANVAS_TOKEN", "canvas-token")
+
+    now = datetime.now(timezone.utc)
+
+    class FakeArtifactRepo:
+        def list(self, **_kwargs):
+            return [
+                ArtifactRecord(
+                    artifact_id="art_other",
+                    owner_id="grader",
+                    session_id=None,
+                    sandbox_id=None,
+                    artifact_type="browser_profile",
+                    source="session_share",
+                    run_id=None,
+                    volatility=None,
+                    artifact_format="json",
+                    created_at=now,
+                    updated_at=now,
+                    tags=[],
+                    attributes={"origin": "https://example.com", "domain": "example.com"},
+                    blob_path="/tmp/art_other.json",
+                ),
+                ArtifactRecord(
+                    artifact_id="art_canvas",
+                    owner_id="grader",
+                    session_id=None,
+                    sandbox_id=None,
+                    artifact_type="browser_profile",
+                    source="session_share",
+                    run_id=None,
+                    volatility=None,
+                    artifact_format="json",
+                    created_at=now,
+                    updated_at=now,
+                    tags=[],
+                    attributes={
+                        "origin": "https://canvas.instructure.com",
+                        "domain": "canvas.instructure.com",
+                    },
+                    blob_path="/tmp/art_canvas.json",
+                ),
+            ]
+
+    payload = GradingJobRequest(
+        course_id="course-1",
+        assignment_id="assign-1",
+        student_id="student-1",
+        canvas_base="https://canvas.instructure.com",
+    )
+
+    args = worker._build_grade_student_args(
+        payload,
+        "internal-secret",
+        owner_id="grader",
+        artifact_repo=FakeArtifactRepo(),
+    )
+
+    assert args.profile_artifact_id == "art_canvas"
+
+
 def test_resolve_profile_path_errors(tmp_path):
     SQLModel.metadata.create_all(engine)
     repo = ArtifactRepository(engine)
@@ -285,6 +387,7 @@ def test_build_locators_and_perform_actions(monkeypatch):
     assert locators
 
     worker._perform_locator_action(page, step, "click")
+    assert "scroll_into_view_if_needed" in page._locator.calls
 
     step = Step(action="type", selector="#id", text="hi", delay_ms=5)
     worker._perform_locator_action(page, step, "type")
@@ -297,6 +400,42 @@ def test_build_locators_and_perform_actions(monkeypatch):
 
     with pytest.raises(RuntimeError):
         worker._perform_locator_action(page, Step(action="click", selector="#id"), "unknown")
+
+
+def test_perform_locator_action_uses_frame_scope():
+    inner = DummyLocator()
+    frame = DummyPage(locator_map={"#inner": inner})
+    frame_handle = DummyFrameHandle(frame)
+    page = DummyPage(locator_map={"#frame": DummyLocator(element_handle=frame_handle)})
+
+    worker._perform_locator_action(
+        page,
+        Step(action="click", selector="#inner", frame_selector="#frame"),
+        "click",
+    )
+
+    assert "click" in inner.calls
+
+
+def test_step_should_skip_when_guard_selector_exists():
+    guard = DummyLocator()
+    page = DummyPage(locator_map={"#guard": guard})
+
+    assert worker._step_should_skip(page, Step(action="click", selector="#id", skip_if_selector="#guard")) is True
+
+
+def test_optional_locator_action_ignores_missing_target():
+    page = DummyPage(locator_map={})
+
+    worker._perform_locator_action(page, Step(action="click", selector="#missing", optional=True), "click")
+
+
+def test_pointer_click_falls_back_to_page_mouse():
+    page = DummyPage()
+
+    worker._pointer_click(page, 12, 24)
+
+    assert any(call[0] == "move" for call in page.mouse.calls)
 
 
 def test_capture_page_state_and_execute_steps(tmp_path, monkeypatch):

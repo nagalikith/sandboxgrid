@@ -50,6 +50,11 @@ class Step(BaseModel):
     url: Optional[str] = None
     selector: Optional[str] = None
     selector_fallbacks: Optional[List[str]] = None
+    frame_selector: Optional[str] = None
+    frame_selector_fallbacks: Optional[List[str]] = None
+    skip_if_selector: Optional[str] = None
+    skip_if_selector_fallbacks: Optional[List[str]] = None
+    optional: bool = False
     role: Optional[str] = None
     role_name: Optional[str] = None
     label: Optional[str] = None
