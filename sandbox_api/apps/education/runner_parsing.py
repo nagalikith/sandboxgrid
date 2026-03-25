@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import difflib
 import json
 import os
 import re
@@ -15,7 +16,17 @@ except Exception:  # noqa: BLE001
     fitz = None
 
 from .runner_clients import CanvasClient, LlmClient, PdfExtractor
-from .runner_models import AnnotationPlan, AnnotationPoint, AttachmentInfo, CanvasSubmission, GradeResult
+from .runner_models import (
+    AnnotationPlan,
+    AnnotationPlanPayload,
+    AnnotationPoint,
+    AttachmentInfo,
+    CanvasSubmission,
+    ConfidenceMarker,
+    CriterionVerificationResult,
+    GradeResult,
+    GradeVerificationResult,
+)
 from .runner_selectors import FIREWORKS_VISION_MAX_IMAGES, FIREWORKS_VISION_MAX_TOTAL_BASE64
 
 
@@ -209,6 +220,7 @@ def load_saved_grade_result(path: Path) -> Dict[str, Any]:
     return {
         "grade": grade,
         "annotation_plan": annotation_plan,
+        "grading_confidence": data.get("grading_confidence") or {},
         "assignment_context": str(data.get("assignment_context") or ""),
         "assignment_context_sources": data.get("assignment_context_sources") or [],
         "assignment_title": str(data.get("assignment_title") or "Assignment"),
@@ -245,6 +257,206 @@ def build_text_payload(pages: List[Dict[str, Any]], max_chars: int) -> str:
         parts.append(block)
         count += len(block)
     return "\n".join(parts)
+
+
+def is_fireworks_base_url(base_url: Optional[str]) -> bool:
+    return "fireworks.ai" in (base_url or "").lower()
+
+
+def build_response_format_for_model(model_cls: Any, *, use_fireworks: bool) -> Dict[str, Any]:
+    if use_fireworks:
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": getattr(model_cls, "__name__", "ResponsePayload"),
+                "schema": model_cls.schema(),
+            },
+        }
+    return {"type": "json_object"}
+
+
+def build_grade_response_format(*, use_fireworks: bool) -> Dict[str, Any]:
+    return build_response_format_for_model(GradeResult, use_fireworks=use_fireworks)
+
+
+def build_annotation_response_format(*, use_fireworks: bool) -> Dict[str, Any]:
+    return build_response_format_for_model(AnnotationPlanPayload, use_fireworks=use_fireworks)
+
+
+def build_grade_verification_response_format(*, use_fireworks: bool) -> Dict[str, Any]:
+    return build_response_format_for_model(GradeVerificationResult, use_fireworks=use_fireworks)
+
+
+def build_confidence_label_response_format(*, use_fireworks: bool) -> Optional[Dict[str, Any]]:
+    if not use_fireworks:
+        return None
+    return {"type": "grammar", "grammar": 'root ::= "S" | "W" | "U" | "A" | "R"'}
+
+
+def normalize_for_matching(value: Optional[str]) -> str:
+    text = (value or "").lower()
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"[^a-z0-9 ]+", "", text)
+    return text.strip()
+
+
+def _candidate_snippets(text: str) -> List[str]:
+    candidates: List[str] = []
+    for chunk in re.split(r"[\n\r]+", text):
+        chunk = chunk.strip()
+        if chunk:
+            candidates.append(chunk)
+    if not candidates:
+        stripped = text.strip()
+        if stripped:
+            candidates.append(stripped)
+    return candidates[:40]
+
+
+def match_quote_to_submission_pages(
+    quote: str,
+    submission_pages: List[Dict[str, Any]],
+    *,
+    page_hint: Optional[int] = None,
+) -> Dict[str, Any]:
+    clean_quote = quote.strip()
+    if not clean_quote:
+        return {
+            "quote": quote,
+            "matched": False,
+            "matched_page": None,
+            "match_type": "missing",
+            "match_score": 0.0,
+        }
+    normalized_quote = normalize_for_matching(clean_quote)
+    exact_candidate: Optional[Dict[str, Any]] = None
+    normalized_candidate: Optional[Dict[str, Any]] = None
+    fuzzy_candidate = {
+        "quote": clean_quote,
+        "matched": False,
+        "matched_page": None,
+        "match_type": "missing",
+        "match_score": 0.0,
+    }
+    for page in submission_pages:
+        page_num = page.get("page") or 1
+        text = str(page.get("text") or "")
+        if not text.strip():
+            continue
+        if clean_quote in text:
+            exact_candidate = {
+                "quote": clean_quote,
+                "matched": True,
+                "matched_page": page_num,
+                "match_type": "exact",
+                "match_score": 1.0,
+            }
+            if page_hint is None or page_hint == page_num:
+                return exact_candidate
+        normalized_text = normalize_for_matching(text)
+        if normalized_quote and normalized_quote in normalized_text:
+            candidate = {
+                "quote": clean_quote,
+                "matched": True,
+                "matched_page": page_num,
+                "match_type": "normalized",
+                "match_score": 0.97,
+            }
+            if page_hint is None or page_hint == page_num:
+                return candidate
+            if normalized_candidate is None:
+                normalized_candidate = candidate
+        for snippet in _candidate_snippets(text):
+            ratio = difflib.SequenceMatcher(None, normalized_quote, normalize_for_matching(snippet)).ratio()
+            if ratio > fuzzy_candidate["match_score"]:
+                fuzzy_candidate = {
+                    "quote": clean_quote,
+                    "matched": ratio >= 0.72,
+                    "matched_page": page_num,
+                    "match_type": "fuzzy" if ratio >= 0.72 else "missing",
+                    "match_score": round(ratio, 4),
+                    "matched_text": snippet[:280],
+                }
+    return exact_candidate or normalized_candidate or fuzzy_candidate
+
+
+def _criterion_max_points(rubric: List[Dict[str, Any]], criterion_id: str) -> Optional[float]:
+    for criterion in rubric:
+        rubric_id = criterion.get("id") or criterion.get("criterion_id") or criterion.get("name")
+        if str(rubric_id) != criterion_id:
+            continue
+        raw_points = criterion.get("points") or criterion.get("max_score")
+        try:
+            return float(raw_points)
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def build_submission_pages_for_matching(
+    *,
+    extracted_pages: List[Dict[str, Any]],
+    text_pages: List[Dict[str, Any]],
+    extracted_text: str,
+) -> List[Dict[str, Any]]:
+    if extracted_pages:
+        return extracted_pages
+    if text_pages:
+        return text_pages
+    text = extracted_text.strip()
+    if not text or text == "(No extractable text found.)":
+        return []
+    return [{"page": 1, "text": text}]
+
+
+def assess_grade_grounding(
+    grade: GradeResult,
+    *,
+    submission_pages: List[Dict[str, Any]],
+    rubric: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    criteria_summary: List[Dict[str, Any]] = []
+    total_evidence = 0
+    matched_evidence = 0
+    for criterion in grade.criteria:
+        evidence_matches: List[Dict[str, Any]] = []
+        for evidence in criterion.evidence:
+            total_evidence += 1
+            match = match_quote_to_submission_pages(
+                evidence.quote,
+                submission_pages,
+                page_hint=evidence.page,
+            )
+            match["expected_page"] = evidence.page
+            evidence_matches.append(match)
+            if match.get("matched"):
+                matched_evidence += 1
+        evidence_count = len(evidence_matches)
+        matched_count = sum(1 for item in evidence_matches if item.get("matched"))
+        rubric_max_points = _criterion_max_points(rubric, criterion.id)
+        points_within_rubric = True
+        if rubric_max_points is not None:
+            points_within_rubric = criterion.points <= rubric_max_points + 1e-9
+        criteria_summary.append(
+            {
+                "id": criterion.id,
+                "points": criterion.points,
+                "rubric_max_points": rubric_max_points,
+                "points_within_rubric": points_within_rubric,
+                "evidence_count": evidence_count,
+                "matched_evidence_count": matched_count,
+                "citation_match_ratio": round(matched_count / evidence_count, 4) if evidence_count else 0.0,
+                "evidence_matches": evidence_matches,
+            }
+        )
+    overall_ratio = round(matched_evidence / total_evidence, 4) if total_evidence else 0.0
+    return {
+        "submission_page_count": len(submission_pages),
+        "total_evidence_count": total_evidence,
+        "matched_evidence_count": matched_evidence,
+        "citation_match_ratio": overall_ratio,
+        "criteria": criteria_summary,
+    }
 
 
 def render_pdf_images_best_effort(
@@ -482,6 +694,7 @@ def build_annotation_prompt(
     return (
         "You are annotating a student submission in Canvas SpeedGrader. "
         "Use the question context and rubric to decide where to mark up the submission. "
+        "Reply in JSON matching the requested schema. "
         "Return JSON with key 'annotations' as a list. Each annotation must include: "
         "page (1-based), tool (one of 'select', 'point', 'freetext', 'highlight', 'strike', 'free_draw', 'area'), "
         "criterion_id, rationale, color (red/orange/yellow/green/blue/dark blue/pink/purple/brown/black), "
@@ -578,9 +791,11 @@ def build_grade_prompt(
     return (
         "You are an exacting grader. Grade the student submission using the rubric, "
         "assignment instructions, and question context (including any assignment PDFs). "
+        "Reply in JSON matching the requested schema. "
         "Return strict JSON with keys: total_points, criteria, overall_feedback, overall_rationale. "
         "Each criteria item must include id, points, comment, rationale, evidence. "
         "Evidence must include page and quote. "
+        "Do not invent evidence. If a score cannot be justified from the submission, score conservatively and explain the uncertainty in the rationale. "
         f"Evidence mode: {evidence_mode}.\n\n"
         f"Assignment title: {assignment_title}\n"
         f"Assignment instructions: {assignment_instructions}\n\n"
@@ -592,6 +807,63 @@ def build_grade_prompt(
     )
 
 
+def build_grade_verification_prompt(
+    *,
+    assignment_title: str,
+    assignment_context: str,
+    rubric: List[Dict[str, Any]],
+    extracted_text: str,
+    grade: GradeResult,
+    grounding_summary: Dict[str, Any],
+) -> str:
+    rubric_block = "\n".join(
+        (
+            f"- id={criterion.get('id') or criterion.get('criterion_id') or criterion.get('name')}: "
+            f"{criterion.get('description') or criterion.get('long_description') or criterion.get('description', '')} "
+            f"(points={criterion.get('points') or criterion.get('max_score')})"
+        )
+        for criterion in rubric
+    ) or "(No rubric provided)"
+    return (
+        "You are a grading verifier. Assess whether the draft grade is supported by the supplied student submission. "
+        "Reply in JSON matching the requested schema. "
+        "Do not produce a new grade. Only judge support. "
+        "Allowed markers are supported, weak_support, uncertain, abstain, review_required. "
+        "Use abstain if the submission text is insufficient to verify the draft. "
+        "Use review_required if the draft conflicts with the evidence, cites text that is missing, or exceeds rubric bounds.\n\n"
+        f"Assignment title: {assignment_title}\n"
+        f"Assignment context:\n{assignment_context}\n\n"
+        f"Rubric:\n{rubric_block}\n\n"
+        f"Submission content:\n{extracted_text}\n\n"
+        f"Draft grade JSON:\n{json.dumps(grade.dict(exclude_none=True), ensure_ascii=True, indent=2)}\n\n"
+        f"Deterministic evidence checks:\n{json.dumps(grounding_summary, ensure_ascii=True, indent=2)}\n"
+    )
+
+
+def build_confidence_label_messages(
+    *,
+    grade: GradeResult,
+    grounding_summary: Dict[str, Any],
+    verification: GradeVerificationResult,
+) -> List[Dict[str, Any]]:
+    prompt = (
+        "You are assigning a final confidence routing code for a draft grade. "
+        "Choose exactly one code based only on support from the provided submission evidence.\n"
+        "S = supported\n"
+        "W = weak_support\n"
+        "U = uncertain\n"
+        "A = abstain\n"
+        "R = review_required\n\n"
+        f"Draft grade JSON:\n{json.dumps(grade.dict(exclude_none=True), ensure_ascii=True, indent=2)}\n\n"
+        f"Deterministic evidence checks:\n{json.dumps(grounding_summary, ensure_ascii=True, indent=2)}\n\n"
+        f"Verifier JSON:\n{json.dumps(verification.dict(exclude_none=True), ensure_ascii=True, indent=2)}\n"
+    )
+    return [
+        {"role": "system", "content": "Return exactly one code: S, W, U, A, or R."},
+        {"role": "user", "content": prompt},
+    ]
+
+
 def parse_grade_result(raw_response: Dict[str, Any]) -> GradeResult:
     try:
         data = json.loads(_response_text(raw_response, label="LLM response"))
@@ -601,6 +873,204 @@ def parse_grade_result(raw_response: Dict[str, Any]) -> GradeResult:
         return GradeResult.parse_obj(_normalize_grade_result_payload(data))
     except ValidationError as exc:
         raise RuntimeError(f"LLM response failed validation: {exc}") from exc
+
+
+def parse_grade_verification_result(raw_response: Dict[str, Any]) -> GradeVerificationResult:
+    try:
+        data = json.loads(_response_text(raw_response, label="Grade verification response"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("Grade verification response is not valid JSON.") from exc
+    try:
+        return GradeVerificationResult.parse_obj(data)
+    except ValidationError as exc:
+        raise RuntimeError(f"Grade verification response failed validation: {exc}") from exc
+
+
+def parse_confidence_label(raw_response: Dict[str, Any]) -> Optional[ConfidenceMarker]:
+    marker_map: Dict[str, ConfidenceMarker] = {
+        "S": "supported",
+        "W": "weak_support",
+        "U": "uncertain",
+        "A": "abstain",
+        "R": "review_required",
+    }
+    text = _response_text_or_none(raw_response, label="Confidence label response")
+    if not text:
+        return None
+    return marker_map.get(text.strip().upper())
+
+
+def extract_logprob_margin(raw_response: Optional[Dict[str, Any]]) -> Optional[float]:
+    if not raw_response:
+        return None
+    try:
+        entries = raw_response["choices"][0]["logprobs"]["content"]
+    except (KeyError, IndexError, TypeError):
+        return None
+    for entry in entries or []:
+        top = entry.get("top_logprobs")
+        if not isinstance(top, list) or len(top) < 2:
+            continue
+        try:
+            ordered = sorted(top, key=lambda item: float(item.get("logprob", float("-inf"))), reverse=True)
+            return round(float(ordered[0]["logprob"]) - float(ordered[1]["logprob"]), 4)
+        except (KeyError, TypeError, ValueError):
+            continue
+    return None
+
+
+def _choose_confidence_marker(
+    *,
+    verifier_marker: Optional[ConfidenceMarker],
+    citation_match_ratio: float,
+    evidence_count: int,
+    contradictions_found: int,
+    points_within_rubric: bool = True,
+    verifier_margin: Optional[float] = None,
+) -> Tuple[ConfidenceMarker, str]:
+    reasons: List[str] = []
+    if not points_within_rubric:
+        return "review_required", "Score exceeds rubric maximum."
+    if contradictions_found > 0:
+        return "review_required", "Verifier found contradictions against the submission evidence."
+    if evidence_count == 0:
+        if verifier_marker == "abstain":
+            return "abstain", "Verifier abstained because the draft grade has no supporting evidence."
+        return "review_required", "Draft grade has no supporting evidence quotes."
+    if verifier_marker == "abstain":
+        return "abstain", "Verifier could not support the draft from the supplied submission."
+    if verifier_marker == "uncertain":
+        return "uncertain", "Verifier marked the draft as uncertain."
+    if citation_match_ratio >= 0.9:
+        reasons.append("Evidence quotes matched the submission.")
+        if verifier_margin is not None and verifier_margin < 0.75:
+            reasons.append("Label margin was weak.")
+            return "weak_support", " ".join(reasons)
+        if verifier_marker in {None, "supported", "weak_support"}:
+            return "supported", " ".join(reasons)
+    if citation_match_ratio >= 0.5:
+        reasons.append("Some evidence quotes matched the submission.")
+        if verifier_marker == "supported":
+            reasons.append("Verifier still supported the draft.")
+        elif verifier_marker == "weak_support":
+            reasons.append("Verifier marked the draft as weakly supported.")
+        return "weak_support", " ".join(reasons)
+    if verifier_marker == "supported":
+        return "weak_support", "Verifier supported the draft, but evidence quote matching was weak."
+    if verifier_marker == "weak_support":
+        return "uncertain", "Verifier reported weak support and the evidence matching was weak."
+    return "review_required", "Evidence quotes did not match the submission strongly enough."
+
+
+def apply_grade_confidence_markers(
+    grade: GradeResult,
+    *,
+    grounding_summary: Dict[str, Any],
+    verification: Optional[GradeVerificationResult] = None,
+    overall_label: Optional[ConfidenceMarker] = None,
+    overall_margin: Optional[float] = None,
+) -> Dict[str, Any]:
+    verifier_by_id: Dict[str, CriterionVerificationResult] = {
+        item.id: item for item in (verification.criteria if verification else [])
+    }
+    criteria_summary: List[Dict[str, Any]] = []
+    for criterion in grade.criteria:
+        summary = next((item for item in grounding_summary.get("criteria", []) if item.get("id") == criterion.id), None) or {}
+        verifier = verifier_by_id.get(criterion.id)
+        marker, reason = _choose_confidence_marker(
+            verifier_marker=verifier.marker if verifier else None,
+            citation_match_ratio=float(summary.get("citation_match_ratio") or 0.0),
+            evidence_count=int(summary.get("evidence_count") or 0),
+            contradictions_found=int((verifier.contradictions_found if verifier else 0) or 0),
+            points_within_rubric=bool(summary.get("points_within_rubric", True)),
+        )
+        criterion.confidence_marker = marker
+        criterion.confidence_reason = reason
+        criteria_summary.append(
+            {
+                "id": criterion.id,
+                "confidence_marker": marker,
+                "confidence_reason": reason,
+                "citation_match_ratio": float(summary.get("citation_match_ratio") or 0.0),
+                "points_within_rubric": bool(summary.get("points_within_rubric", True)),
+                "verifier_marker": verifier.marker if verifier else None,
+                "verifier_notes": verifier.notes if verifier else None,
+                "verifier_contradictions_found": verifier.contradictions_found if verifier else 0,
+                "evidence_matches": summary.get("evidence_matches") or [],
+            }
+        )
+    overall_verifier_marker = overall_label or (verification.overall_marker if verification else None)
+    marker, reason = _choose_confidence_marker(
+        verifier_marker=overall_verifier_marker,
+        citation_match_ratio=float(grounding_summary.get("citation_match_ratio") or 0.0),
+        evidence_count=int(grounding_summary.get("total_evidence_count") or 0),
+        contradictions_found=int((verification.contradictions_found if verification else 0) or 0),
+        verifier_margin=overall_margin,
+    )
+    grade.confidence_marker = marker
+    grade.confidence_reason = reason
+    grade.verification_notes = verification.overall_notes if verification else None
+    return {
+        "overall": {
+            "confidence_marker": marker,
+            "confidence_reason": reason,
+            "citation_match_ratio": float(grounding_summary.get("citation_match_ratio") or 0.0),
+            "total_evidence_count": int(grounding_summary.get("total_evidence_count") or 0),
+            "matched_evidence_count": int(grounding_summary.get("matched_evidence_count") or 0),
+            "verifier_marker": verification.overall_marker if verification else None,
+            "verifier_notes": verification.overall_notes if verification else None,
+            "verifier_contradictions_found": verification.contradictions_found if verification else 0,
+            "label_marker": overall_label,
+            "label_margin": overall_margin,
+        },
+        "criteria": criteria_summary,
+    }
+
+
+def annotate_annotation_plan_with_confidence(
+    annotations: List[AnnotationPlan],
+    *,
+    grade: GradeResult,
+    submission_pages: List[Dict[str, Any]],
+) -> List[AnnotationPlan]:
+    criterion_markers = {criterion.id: criterion.confidence_marker for criterion in grade.criteria}
+    updated: List[AnnotationPlan] = []
+    for annotation in annotations:
+        criterion_marker = criterion_markers.get(annotation.criterion_id or "")
+        if criterion_marker in {"review_required", "abstain", "uncertain"}:
+            annotation.confidence_marker = criterion_marker
+            annotation.confidence_reason = "Linked grading criterion did not clear verification."
+            updated.append(annotation)
+            continue
+        if annotation.evidence_quote:
+            match = match_quote_to_submission_pages(
+                annotation.evidence_quote,
+                submission_pages,
+                page_hint=annotation.page,
+            )
+            if match.get("matched") and float(match.get("match_score") or 0.0) >= 0.9:
+                annotation.confidence_marker = "supported"
+                annotation.confidence_reason = "Annotation evidence quote matched the submission."
+            elif match.get("matched"):
+                annotation.confidence_marker = "weak_support"
+                annotation.confidence_reason = "Annotation evidence quote only matched fuzzily."
+            else:
+                annotation.confidence_marker = "review_required"
+                annotation.confidence_reason = "Annotation evidence quote did not match the submission."
+        else:
+            annotation.confidence_marker = "weak_support" if criterion_marker == "supported" else criterion_marker or "uncertain"
+            annotation.confidence_reason = "Annotation inherited confidence from the linked grading criterion."
+        updated.append(annotation)
+    return updated
+
+
+def filter_annotation_plan_by_confidence(
+    annotations: List[AnnotationPlan],
+    *,
+    allowed_markers: List[ConfidenceMarker],
+) -> List[AnnotationPlan]:
+    allowed = set(allowed_markers)
+    return [annotation for annotation in annotations if annotation.confidence_marker in allowed]
 
 
 def filter_annotation_plan_for_submission(

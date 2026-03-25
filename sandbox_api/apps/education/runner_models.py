@@ -7,6 +7,9 @@ from typing import Any, Dict, List, Literal, Optional, Protocol
 from pydantic import BaseModel, Field
 
 
+ConfidenceMarker = Literal["supported", "weak_support", "uncertain", "abstain", "review_required"]
+
+
 @dataclass
 class GradeStudentArgs:
     course_id: str
@@ -46,6 +49,9 @@ class GradeStudentOutcome:
     grade_result_path: Path
     speedgrader_state_path: Path
     llm_observability_path: Path
+    sandbox_id: Optional[str] = None
+    browser_url: Optional[str] = None
+    dashboard_url: Optional[str] = None
 
 
 class BrowserApplyError(RuntimeError):
@@ -57,12 +63,18 @@ class BrowserApplyError(RuntimeError):
         grade_result_path: Path,
         llm_observability_path: Path,
         speedgrader_state_path: Optional[Path] = None,
+        sandbox_id: Optional[str] = None,
+        browser_url: Optional[str] = None,
+        dashboard_url: Optional[str] = None,
     ) -> None:
         super().__init__(message)
         self.run_dir = run_dir
         self.grade_result_path = grade_result_path
         self.llm_observability_path = llm_observability_path
         self.speedgrader_state_path = speedgrader_state_path
+        self.sandbox_id = sandbox_id
+        self.browser_url = browser_url
+        self.dashboard_url = dashboard_url
 
 
 class SandboxOps(Protocol):
@@ -99,6 +111,8 @@ class GradeCriterionResult(BaseModel):
     comment: str = Field(..., min_length=1)
     rationale: Optional[str] = None
     evidence: List[GradeEvidence]
+    confidence_marker: Optional[ConfidenceMarker] = None
+    confidence_reason: Optional[str] = None
 
 
 class GradeResult(BaseModel):
@@ -106,6 +120,9 @@ class GradeResult(BaseModel):
     criteria: List[GradeCriterionResult]
     overall_feedback: str = Field(..., min_length=1)
     overall_rationale: Optional[str] = None
+    confidence_marker: Optional[ConfidenceMarker] = None
+    confidence_reason: Optional[str] = None
+    verification_notes: Optional[str] = None
 
 
 class AnnotationPoint(BaseModel):
@@ -123,6 +140,26 @@ class AnnotationPlan(BaseModel):
     path: List[AnnotationPoint] = Field(default_factory=list)
     point: Optional[AnnotationPoint] = None
     text: Optional[str] = None
+    confidence_marker: Optional[ConfidenceMarker] = None
+    confidence_reason: Optional[str] = None
+
+
+class AnnotationPlanPayload(BaseModel):
+    annotations: List[AnnotationPlan] = Field(default_factory=list)
+
+
+class CriterionVerificationResult(BaseModel):
+    id: str = Field(..., min_length=1)
+    marker: ConfidenceMarker
+    contradictions_found: int = Field(default=0, ge=0)
+    notes: Optional[str] = None
+
+
+class GradeVerificationResult(BaseModel):
+    overall_marker: ConfidenceMarker
+    overall_notes: Optional[str] = None
+    contradictions_found: int = Field(default=0, ge=0)
+    criteria: List[CriterionVerificationResult] = Field(default_factory=list)
 
 
 @dataclass

@@ -283,6 +283,8 @@ class LlmClient:
         *,
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
+        logprobs: Optional[Any] = None,
+        top_logprobs: Optional[int] = None,
     ) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
             "model": self.model,
@@ -293,6 +295,10 @@ class LlmClient:
             payload["response_format"] = response_format
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
+        if logprobs is not None:
+            payload["logprobs"] = logprobs
+        if top_logprobs is not None:
+            payload["top_logprobs"] = top_logprobs
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"

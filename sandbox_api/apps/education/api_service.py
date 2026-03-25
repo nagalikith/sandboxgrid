@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 from uuid import uuid4
@@ -96,15 +98,66 @@ def session_response(record: GradingSessionRecord) -> GradingSessionResponse:
     )
 
 
+def grade_result_summary_from_path(path_value: Any) -> Dict[str, Any]:
+    if isinstance(path_value, Path):
+        path = path_value.expanduser()
+    elif isinstance(path_value, str) and path_value.strip():
+        path = Path(path_value).expanduser()
+    else:
+        return {}
+    if not path.exists() or not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    grade = data.get("grade") or {}
+    overall_confidence = (data.get("grading_confidence") or {}).get("overall") or {}
+    criteria = grade.get("criteria") or []
+    criteria_marker_counts: Dict[str, int] = {}
+    for criterion in criteria:
+        if not isinstance(criterion, dict):
+            continue
+        marker = criterion.get("confidence_marker")
+        if not isinstance(marker, str) or not marker.strip():
+            continue
+        criteria_marker_counts[marker] = criteria_marker_counts.get(marker, 0) + 1
+    annotation_plan = data.get("annotation_plan") or []
+    raw_annotation_plan = data.get("annotation_plan_raw") or annotation_plan
+    return {
+        "course_id": data.get("course_id"),
+        "assignment_id": data.get("assignment_id"),
+        "student_id": data.get("student_id"),
+        "student_name": data.get("student_name"),
+        "assignment_title": data.get("assignment_title"),
+        "total_points": grade.get("total_points"),
+        "overall_confidence_marker": overall_confidence.get("confidence_marker") or grade.get("confidence_marker"),
+        "overall_confidence_reason": overall_confidence.get("confidence_reason") or grade.get("confidence_reason"),
+        "criteria_count": len(criteria) if isinstance(criteria, list) else 0,
+        "criteria_marker_counts": criteria_marker_counts,
+        "annotation_count": len(annotation_plan) if isinstance(annotation_plan, list) else 0,
+        "annotation_raw_count": len(raw_annotation_plan) if isinstance(raw_annotation_plan, list) else 0,
+    }
+
+
 def grading_job_response(record: GradingJobRecord) -> GradingJobResponse:
     payload_data = dict(record.payload)
     if "canvas_token" in payload_data:
         payload_data["canvas_token"] = None
+    result = dict(record.result or {}) if isinstance(record.result, dict) else record.result
+    if isinstance(result, dict):
+        grade_summary = result.get("grade_summary")
+        if not isinstance(grade_summary, dict) or not grade_summary:
+            loaded = grade_result_summary_from_path(result.get("grade_result_path"))
+            if loaded:
+                result["grade_summary"] = loaded
     return GradingJobResponse(
         job_id=record.job_id,
         status=record.status,
         payload=GradingJobRequest.parse_obj(payload_data),
-        result=record.result,
+        result=result,
         error_message=record.error_message,
         created_at=record.created_at,
         updated_at=record.updated_at,

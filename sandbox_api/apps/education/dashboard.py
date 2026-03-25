@@ -176,8 +176,10 @@ def build_assessment_dashboard(
     points_by_criterion: Dict[str, List[float]] = {}
     total_scores: List[float] = []
     evidence_mode_counts: Counter[str] = Counter()
+    confidence_counts: Counter[str] = Counter()
     graded_at_counts: Counter[str] = Counter()
     items_by_criterion: Dict[str, List[Dict[str, Any]]] = {}
+    low_confidence_rows: List[List[Any]] = []
 
     for result in filtered:
         total_points = (result.get("grade") or {}).get("total_points")
@@ -193,6 +195,23 @@ def build_assessment_dashboard(
             except ValueError:
                 pass
         grade = result.get("grade") or {}
+        grading_confidence = result.get("grading_confidence") or {}
+        overall_confidence = grading_confidence.get("overall") or {}
+        overall_marker = (
+            overall_confidence.get("confidence_marker")
+            or grade.get("confidence_marker")
+            or "unknown"
+        )
+        confidence_counts[str(overall_marker)] += 1
+        if overall_marker in {"uncertain", "abstain", "review_required"}:
+            low_confidence_rows.append(
+                [
+                    result.get("student_name") or result.get("student_id") or "(unknown)",
+                    overall_marker,
+                    total_points if isinstance(total_points, (int, float)) else "",
+                    _short_label(str(overall_confidence.get("confidence_reason") or grade.get("confidence_reason") or ""), 96),
+                ]
+            )
         criteria = grade.get("criteria") or []
         for criterion in criteria:
             criterion_id = criterion.get("id") or "unknown"
@@ -240,6 +259,9 @@ def build_assessment_dashboard(
         DashboardMetric(label="Submissions", value=len(filtered)),
         DashboardMetric(label="Clusters", value=len(clusters)),
     ]
+    low_confidence_count = sum(confidence_counts.get(marker, 0) for marker in ("uncertain", "abstain", "review_required"))
+    metrics.append(DashboardMetric(label="Low Confidence", value=low_confidence_count))
+    metrics.append(DashboardMetric(label="Review Required", value=confidence_counts.get("review_required", 0)))
 
     charts: List[DashboardChart] = []
     if total_scores:
@@ -269,6 +291,25 @@ def build_assessment_dashboard(
                         points=[
                             DashboardPoint(t=mode, v=count)
                             for mode, count in sorted(evidence_mode_counts.items())
+                        ],
+                    )
+                ],
+            )
+        )
+    if confidence_counts:
+        marker_order = ["supported", "weak_support", "uncertain", "abstain", "review_required", "unknown"]
+        charts.append(
+            DashboardChart(
+                id="confidence_markers",
+                title="Confidence Marker Distribution",
+                type="bar",
+                series=[
+                    DashboardSeries(
+                        label="Submissions",
+                        points=[
+                            DashboardPoint(t=marker, v=confidence_counts[marker])
+                            for marker in marker_order
+                            if confidence_counts.get(marker)
                         ],
                     )
                 ],
@@ -351,9 +392,18 @@ def build_assessment_dashboard(
                 rows=rows,
             )
         )
+    if low_confidence_rows:
+        tables.append(
+            DashboardTable(
+                title="Low Confidence Queue",
+                columns=["Student", "Marker", "Score", "Reason"],
+                rows=low_confidence_rows[:25],
+            )
+        )
 
     notes = [
         "Clusters are grouped by comment + evidence similarity (token Jaccard).",
+        "Confidence markers come from grading verification plus deterministic evidence checks.",
         "Use GRADING_WORKER_CONCURRENCY to speed up batch grading; dashboard updates are separate jobs.",
     ]
 

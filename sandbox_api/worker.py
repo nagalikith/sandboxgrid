@@ -25,6 +25,7 @@ from .artifacts import ArtifactRecord, ArtifactRepository, ArtifactStore
 from .dashboards.charts_renderer import render_dashboard_charts
 from .dashboards.router import save_dashboard_payload
 from .core.database import init_db, engine
+from .apps.education.api_service import grade_result_summary_from_path
 from .apps.education.jobs import GradingJobStatus, grading_job_repo
 from .apps.education.runner import BrowserApplyError, GradeStudentArgs, run_grade_student
 from .core.jobs import CommandJob, DashboardUpdateJob, GradingJob, ProvisionJob, parse_job
@@ -1822,8 +1823,12 @@ async def handle_grading_job(job: GradingJob) -> None:
             result={
                 "run_dir": str(outcome.run_dir.resolve()),
                 "grade_result_path": str(outcome.grade_result_path.resolve()),
+                "grade_summary": grade_result_summary_from_path(outcome.grade_result_path),
                 "speedgrader_state_path": str(outcome.speedgrader_state_path.resolve()),
                 "llm_observability_path": str(outcome.llm_observability_path.resolve()),
+                "sandbox_id": outcome.sandbox_id,
+                "browser_url": outcome.browser_url,
+                "dashboard_url": outcome.dashboard_url,
                 "stdout_tail": "",
                 "stderr_tail": "",
             },
@@ -1839,8 +1844,12 @@ async def handle_grading_job(job: GradingJob) -> None:
             result={
                 "run_dir": str(exc.run_dir.resolve()),
                 "grade_result_path": str(exc.grade_result_path.resolve()),
+                "grade_summary": grade_result_summary_from_path(exc.grade_result_path),
                 "llm_observability_path": str(exc.llm_observability_path.resolve()),
                 "speedgrader_state_path": str(exc.speedgrader_state_path.resolve()) if exc.speedgrader_state_path else None,
+                "sandbox_id": exc.sandbox_id,
+                "browser_url": exc.browser_url,
+                "dashboard_url": exc.dashboard_url,
                 "traceback": _truncate_text(traceback.format_exc()),
             },
             updated_at=datetime.now(timezone.utc),

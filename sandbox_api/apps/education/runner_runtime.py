@@ -14,19 +14,34 @@ from .runner_models import AnnotationPlan, BrowserApplyError, GradeStudentArgs, 
 from .runner_parsing import (
     _response_text,
     _response_text_or_none,
+    annotate_annotation_plan_with_confidence,
+    apply_grade_confidence_markers,
+    assess_grade_grounding,
+    build_annotation_response_format,
     build_annotation_prompt,
+    build_confidence_label_messages,
+    build_confidence_label_response_format,
     build_assignment_context,
     build_extraction_messages,
+    build_grade_response_format,
     build_grade_prompt,
+    build_grade_verification_prompt,
+    build_grade_verification_response_format,
+    build_submission_pages_for_matching,
     build_text_payload,
     encode_image,
+    extract_logprob_margin,
     extract_speedgrader_anonymous_id,
+    filter_annotation_plan_by_confidence,
     filter_annotation_plan_for_submission,
     find_latest_grade_result,
+    is_fireworks_base_url,
     load_saved_grade_result,
     parse_annotation_plan,
     parse_extracted_pages_from_content,
+    parse_confidence_label,
     parse_grade_result,
+    parse_grade_verification_result,
     render_pdf_images_best_effort,
     select_images_for_vision,
     select_pdf,
@@ -105,17 +120,38 @@ def run_grade_student(args: GradeStudentArgs, sandbox_ops: Optional[SandboxOps] 
         use_vision = False
         evidence_mode = "reused" if source_grade_result_path else "text"
         submission_text_source = "saved_grade_result" if source_grade_result_path else "pdf_text"
+        submission_pages_for_matching: List[Dict[str, Any]] = []
         all_submission_images: List[Path] = []
         images: List[Path] = []
         submission_image_render_error: Optional[str] = None
         extraction_messages: Optional[List[Dict[str, Any]]] = None
         extraction_response: Optional[Dict[str, Any]] = None
         extraction_error: Optional[str] = None
+        grading_grounding_summary: Dict[str, Any] = {}
+        grading_verification_messages: List[Dict[str, Any]] = []
+        grading_verification_response: Optional[Dict[str, Any]] = None
+        grading_verification_error: Optional[str] = None
+        grading_verification = None
+        grading_label_response: Optional[Dict[str, Any]] = None
+        grading_label_error: Optional[str] = None
+        grading_label_marker = None
+        grading_label_margin: Optional[float] = None
+        grading_confidence: Dict[str, Any] = {}
+        raw_annotation_plan: List[AnnotationPlan] = []
 
         if source_grade_result_path:
             saved = load_saved_grade_result(source_grade_result_path)
             grade = saved["grade"]
             annotation_plan = saved["annotation_plan"]
+            grading_confidence = saved.get("grading_confidence") or {}
+            if not grade.confidence_marker:
+                overall_confidence = grading_confidence.get("overall") or {}
+                marker = overall_confidence.get("confidence_marker")
+                reason = overall_confidence.get("confidence_reason")
+                if isinstance(marker, str) and marker.strip():
+                    grade.confidence_marker = marker.strip()
+                if isinstance(reason, str) and reason.strip():
+                    grade.confidence_reason = reason.strip()
             assignment_context = saved["assignment_context"]
             assignment_context_sources = saved["assignment_context_sources"]
             extracted_text = saved["submission_text"]
@@ -126,6 +162,11 @@ def run_grade_student(args: GradeStudentArgs, sandbox_ops: Optional[SandboxOps] 
             source_llm_observability_path = saved["source_llm_observability_path"]
             if not args.profile_artifact_id and saved.get("profile_artifact_id"):
                 args.profile_artifact_id = str(saved["profile_artifact_id"])
+            submission_pages_for_matching = build_submission_pages_for_matching(
+                extracted_pages=[],
+                text_pages=[],
+                extracted_text=extracted_text,
+            )
             annotation_plan = filter_annotation_plan_for_submission(annotation_plan, submission_text_source=submission_text_source)
         else:
             pdf_path = run_dir / pdf_attachment.filename
@@ -167,6 +208,12 @@ def run_grade_student(args: GradeStudentArgs, sandbox_ops: Optional[SandboxOps] 
                 except Exception as exc:
                     extraction_error = str(exc)
 
+            submission_pages_for_matching = build_submission_pages_for_matching(
+                extracted_pages=extracted_pages,
+                text_pages=text_pages,
+                extracted_text=extracted_text,
+            )
+
             assignment_context, assignment_context_sources = build_assignment_context(
                 assignment_instructions=assignment_instructions,
                 attachments=assignment_attachments,
@@ -178,6 +225,7 @@ def run_grade_student(args: GradeStudentArgs, sandbox_ops: Optional[SandboxOps] 
             )
 
             grading_llm = LlmClient(args.grading_llm_base, args.grading_llm_key, args.grading_llm_model)
+            grading_use_fireworks = is_fireworks_base_url(args.grading_llm_base)
             prompt = build_grade_prompt(
                 assignment_title=assignment_title,
                 assignment_instructions=assignment_instructions,
@@ -197,9 +245,65 @@ def run_grade_student(args: GradeStudentArgs, sandbox_ops: Optional[SandboxOps] 
             else:
                 grading_messages = [{"role": "system", "content": "Return only JSON matching the schema."}, {"role": "user", "content": prompt}]
 
-            raw_response = grading_llm.chat(grading_messages, response_format={"type": "json_object"})
+            raw_response = grading_llm.chat(
+                grading_messages,
+                response_format=build_grade_response_format(use_fireworks=grading_use_fireworks),
+            )
             grade = parse_grade_result(raw_response)
             grading_response_text = _response_text_or_none(raw_response, label="LLM response")
+            grading_grounding_summary = assess_grade_grounding(
+                grade,
+                submission_pages=submission_pages_for_matching,
+                rubric=rubric,
+            )
+            grading_verification_prompt = build_grade_verification_prompt(
+                assignment_title=assignment_title,
+                assignment_context=assignment_context,
+                rubric=rubric,
+                extracted_text=extracted_text or "(No extractable text found.)",
+                grade=grade,
+                grounding_summary=grading_grounding_summary,
+            )
+            grading_verification_messages = [
+                {"role": "system", "content": "Reply in JSON matching the requested schema. Verify support only; do not rewrite the grade."},
+                {"role": "user", "content": grading_verification_prompt},
+            ]
+            try:
+                grading_verification_response = grading_llm.chat(
+                    grading_verification_messages,
+                    response_format=build_grade_verification_response_format(use_fireworks=grading_use_fireworks),
+                    max_tokens=1800,
+                    temperature=0.0,
+                )
+                grading_verification = parse_grade_verification_result(grading_verification_response)
+            except Exception as exc:
+                grading_verification_error = str(exc)
+                grading_verification = None
+            if grading_use_fireworks and grading_verification is not None:
+                try:
+                    grading_label_response = grading_llm.chat(
+                        build_confidence_label_messages(
+                            grade=grade,
+                            grounding_summary=grading_grounding_summary,
+                            verification=grading_verification,
+                        ),
+                        response_format=build_confidence_label_response_format(use_fireworks=True),
+                        max_tokens=4,
+                        temperature=0.0,
+                        logprobs=True,
+                        top_logprobs=5,
+                    )
+                    grading_label_marker = parse_confidence_label(grading_label_response)
+                    grading_label_margin = extract_logprob_margin(grading_label_response)
+                except Exception as exc:
+                    grading_label_error = str(exc)
+            grading_confidence = apply_grade_confidence_markers(
+                grade,
+                grounding_summary=grading_grounding_summary,
+                verification=grading_verification,
+                overall_label=grading_label_marker,
+                overall_margin=grading_label_margin,
+            )
 
             annotations_enabled = os.getenv("ENABLE_SPEEDGRADER_ANNOTATIONS", "1").lower() not in {"0", "false", "no"}
             annotation_plan: List[AnnotationPlan] = []
@@ -240,18 +344,34 @@ def run_grade_student(args: GradeStudentArgs, sandbox_ops: Optional[SandboxOps] 
                             args.annotation_llm_key or args.grading_llm_key,
                             args.annotation_llm_model or args.grading_llm_model,
                         )
+                        annotation_use_fireworks = is_fireworks_base_url(args.annotation_llm_base or args.grading_llm_base)
                         annotation_response = annotation_llm.chat(
                             annotation_messages,
-                            response_format={"type": "json_object"},
+                            response_format=build_annotation_response_format(use_fireworks=annotation_use_fireworks),
                             max_tokens=max(1200, max_annotations * 180),
                             temperature=0.0,
                         )
-                        annotation_plan = filter_annotation_plan_for_submission(
+                        raw_annotation_plan = filter_annotation_plan_for_submission(
                             parse_annotation_plan(annotation_response),
                             submission_text_source=submission_text_source,
                         )
+                        raw_annotation_plan = annotate_annotation_plan_with_confidence(
+                            raw_annotation_plan,
+                            grade=grade,
+                            submission_pages=submission_pages_for_matching,
+                        )
+                        auto_apply_markers = [
+                            marker.strip()
+                            for marker in os.getenv("SPEEDGRADER_AUTO_APPLY_MARKERS", "supported,weak_support").split(",")
+                            if marker.strip()
+                        ]
+                        annotation_plan = filter_annotation_plan_by_confidence(
+                            raw_annotation_plan,
+                            allowed_markers=auto_apply_markers,
+                        )
                     except Exception as exc:
                         annotation_error = str(exc)
+                        raw_annotation_plan = []
                         annotation_plan = []
             else:
                 annotation_images = []
@@ -266,6 +386,30 @@ def run_grade_student(args: GradeStudentArgs, sandbox_ops: Optional[SandboxOps] 
             annotation_error = None
             grading_messages: List[Dict[str, Any]] = []
             grading_response_text = None
+            grading_grounding_summary = assess_grade_grounding(
+                grade,
+                submission_pages=submission_pages_for_matching,
+                rubric=rubric,
+            )
+            if not grading_confidence:
+                grading_confidence = apply_grade_confidence_markers(
+                    grade,
+                    grounding_summary=grading_grounding_summary,
+                )
+            raw_annotation_plan = annotate_annotation_plan_with_confidence(
+                annotation_plan,
+                grade=grade,
+                submission_pages=submission_pages_for_matching,
+            )
+            auto_apply_markers = [
+                marker.strip()
+                for marker in os.getenv("SPEEDGRADER_AUTO_APPLY_MARKERS", "supported,weak_support").split(",")
+                if marker.strip()
+            ]
+            annotation_plan = filter_annotation_plan_by_confidence(
+                raw_annotation_plan,
+                allowed_markers=auto_apply_markers,
+            )
 
         graded_at = datetime.now(timezone.utc).isoformat()
         llm_observability_path = run_dir / "llm_observability.json"
@@ -301,6 +445,20 @@ def run_grade_student(args: GradeStudentArgs, sandbox_ops: Optional[SandboxOps] 
                         "messages": summarize_messages_for_observability(grading_messages),
                         "response_text": grading_response_text,
                         "parsed_result": grade.dict(exclude_none=True),
+                        "grounding_summary": grading_grounding_summary,
+                        "verification": {
+                            "messages": summarize_messages_for_observability(grading_verification_messages),
+                            "response_text": _response_text_or_none(grading_verification_response, label="Grade verification response"),
+                            "parsed_result": grading_verification.dict(exclude_none=True) if grading_verification else None,
+                            "error": grading_verification_error,
+                        },
+                        "confidence_label": {
+                            "response_text": _response_text_or_none(grading_label_response, label="Confidence label response"),
+                            "marker": grading_label_marker,
+                            "margin": grading_label_margin,
+                            "error": grading_label_error,
+                        },
+                        "confidence": grading_confidence,
                     },
                     "annotations": {
                         "enabled": annotations_enabled,
@@ -309,7 +467,8 @@ def run_grade_student(args: GradeStudentArgs, sandbox_ops: Optional[SandboxOps] 
                         "image_paths": [str(path.relative_to(run_dir)) for path in annotation_images],
                         "messages": summarize_messages_for_observability(annotation_messages or []),
                         "response_text": _response_text_or_none(annotation_response, label="Annotation response"),
-                        "parsed_plan": [plan.dict(exclude_none=True) for plan in annotation_plan],
+                        "parsed_plan": [plan.dict(exclude_none=True) for plan in raw_annotation_plan],
+                        "applied_plan": [plan.dict(exclude_none=True) for plan in annotation_plan],
                         "error": annotation_error,
                     },
                 },
@@ -335,7 +494,9 @@ def run_grade_student(args: GradeStudentArgs, sandbox_ops: Optional[SandboxOps] 
             "profile_artifact_id": args.profile_artifact_id,
             "assignment_context_sources": assignment_context_sources,
             "assignment_context": assignment_context,
+            "grading_confidence": grading_confidence,
             "annotation_plan": [plan.dict(exclude_none=True) for plan in annotation_plan],
+            "annotation_plan_raw": [plan.dict(exclude_none=True) for plan in raw_annotation_plan],
             "attachment": {"filename": pdf_attachment.filename, "url": pdf_attachment.url},
             "evidence_mode": evidence_mode,
             "submission_text_source": submission_text_source,
@@ -348,7 +509,25 @@ def run_grade_student(args: GradeStudentArgs, sandbox_ops: Optional[SandboxOps] 
         grade_result_path = run_dir / "grade_result.json"
         grade_result_path.write_text(json.dumps(grade_payload, ensure_ascii=True, indent=2), encoding="utf-8")
 
+        blocked_grade_markers = {
+            marker.strip()
+            for marker in os.getenv("SPEEDGRADER_BLOCK_GRADE_MARKERS", "abstain,review_required").split(",")
+            if marker.strip()
+        }
+        if grade.confidence_marker in blocked_grade_markers:
+            raise BrowserApplyError(
+                f"Blocking SpeedGrader apply because overall confidence marker is {grade.confidence_marker}.",
+                run_dir=run_dir,
+                grade_result_path=grade_result_path,
+                llm_observability_path=llm_observability_path,
+                speedgrader_state_path=None,
+                sandbox_id=args.sandbox_id,
+            )
+
         speedgrader_state_path: Optional[Path] = None
+        live_sandbox_id: Optional[str] = args.sandbox_id
+        live_browser_url: Optional[str] = None
+        live_dashboard_url: Optional[str] = None
         try:
             if sandbox_ops is None:
                 if not args.internal_secret:
@@ -356,10 +535,19 @@ def run_grade_student(args: GradeStudentArgs, sandbox_ops: Optional[SandboxOps] 
                 sandbox_ops = SandboxClient(args.sandbox_api, InternalAuth(args.internal_secret, args.agent_id))
             sandbox_id = args.sandbox_id
             if sandbox_id:
-                sandbox_ops.wait_ready(sandbox_id, timeout=120)
+                sandbox_record = sandbox_ops.wait_ready(sandbox_id, timeout=120)
             else:
                 sandbox_id = sandbox_ops.create_sandbox(ttl_seconds=3600)["sandbox_id"]
-                sandbox_ops.wait_ready(sandbox_id)
+                sandbox_record = sandbox_ops.wait_ready(sandbox_id)
+            live_sandbox_id = sandbox_id
+            live_browser_url = sandbox_record.get("browser_url")
+            live_dashboard_url = sandbox_record.get("dashboard_url")
+            grade_payload["sandbox"] = {
+                "sandbox_id": live_sandbox_id,
+                "browser_url": live_browser_url,
+                "dashboard_url": live_dashboard_url,
+            }
+            grade_result_path.write_text(json.dumps(grade_payload, ensure_ascii=True, indent=2), encoding="utf-8")
 
             selectors = DEFAULT_SELECTORS.copy()
             if args.selectors_json:
@@ -461,6 +649,9 @@ def run_grade_student(args: GradeStudentArgs, sandbox_ops: Optional[SandboxOps] 
                 grade_result_path=grade_result_path,
                 speedgrader_state_path=speedgrader_state_path,
                 llm_observability_path=llm_observability_path,
+                sandbox_id=live_sandbox_id,
+                browser_url=live_browser_url,
+                dashboard_url=live_dashboard_url,
             )
         except Exception as exc:
             raise BrowserApplyError(
@@ -469,6 +660,9 @@ def run_grade_student(args: GradeStudentArgs, sandbox_ops: Optional[SandboxOps] 
                 grade_result_path=grade_result_path,
                 llm_observability_path=llm_observability_path,
                 speedgrader_state_path=speedgrader_state_path,
+                sandbox_id=live_sandbox_id,
+                browser_url=live_browser_url,
+                dashboard_url=live_dashboard_url,
             ) from exc
 
 

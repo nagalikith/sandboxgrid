@@ -9,10 +9,13 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
+from ...api.dependencies import orchestrator as sandbox_orchestrator
+from ...api.dependencies import repository as sandbox_repository
 from ...core.internal_auth import internal_auth_dependency
-from ...core.jobs import DashboardUpdateJob, GradingJob
+from ...core.jobs import DashboardUpdateJob, GradingJob, ProvisionJob
 from ...core.rabbitmq import rabbitmq
 from ...dashboards.models import DashboardPayload
+from ...sandboxes.models import SandboxRequest, SandboxStatus
 from .api_models import (
     AssessmentDashboardRequest,
     GradingSessionCreate,
@@ -67,6 +70,37 @@ def safe_filename(name: str) -> str:
 def submission_storage_root() -> Path:
     artifacts_root = Path(os.getenv("SANDBOX_ARTIFACTS_ROOT", "./artifacts"))
     return artifacts_root / "submissions"
+
+
+async def ensure_grading_sandbox(payload: GradingJobRequest, *, owner_id: str) -> GradingJobRequest:
+    if payload.sandbox_id:
+        record = sandbox_repository.get(payload.sandbox_id)
+        if not record:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sandbox not found.")
+        if record.owner_id != owner_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden.")
+        if record.status == SandboxStatus.terminated:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Sandbox is terminated.")
+        return payload
+
+    request = SandboxRequest(ttl_seconds=3600, capabilities=["browser", "dashboard"])
+    record = await sandbox_orchestrator.provision(request, owner_id=owner_id)
+    try:
+        await rabbitmq.publish_job(
+            ProvisionJob(
+                sandbox_id=record.sandbox_id,
+                owner_id=owner_id,
+                request=request,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        sandbox_repository.set_error(record.sandbox_id, message=f"Queue error: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Queue unavailable. Try again later.",
+        ) from exc
+    logger.info("grading_job_create sandbox_allocated owner_id=%s sandbox_id=%s", owner_id, record.sandbox_id)
+    return payload.copy(update={"sandbox_id": record.sandbox_id})
 
 
 @router.post("/submissions", response_model=SubmissionResponse, status_code=status.HTTP_201_CREATED)
@@ -333,6 +367,7 @@ async def create_grading_job(
     payload: GradingJobRequest,
     owner_id: str = Depends(require_internal_auth),
 ) -> GradingJobResponse:
+    payload = await ensure_grading_sandbox(payload, owner_id=owner_id)
     job_id = f"grj_{uuid4().hex[:10]}"
     logger.info(
         "grading_job_create request job_id=%s owner_id=%s payload=%s",
