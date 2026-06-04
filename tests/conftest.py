@@ -13,9 +13,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
-@pytest.fixture(scope="session")
-def client(tmp_path_factory):
-    base_dir = tmp_path_factory.mktemp("artifact-tests")
+@pytest.fixture(scope="function")
+def client(tmp_path):
+    base_dir = tmp_path
     db_path = base_dir / "test.db"
     artifacts_root = base_dir / "artifacts"
 
@@ -52,7 +52,7 @@ def client(tmp_path_factory):
         yield test_client
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture()
 def reset_state(client):
     import sandbox_api.artifacts as artifacts
     import sandbox_api.apps.education.api as grading
