@@ -20,7 +20,7 @@ JOB_VERSION = 1
 
 
 class JobBase(BaseModel):
-    version: int = Field(default=JOB_VERSION, const=True)
+    version: int = Field(default=JOB_VERSION)
     type: str
 
 

@@ -72,7 +72,7 @@ class Step(BaseModel):
     class Config:
         allow_population_by_field_name = True
 
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def validate_fields(cls, values: dict) -> dict:
         action = values.get("action")
         selector = values.get("selector")
@@ -129,7 +129,7 @@ class StepsRequest(BaseModel):
     screenshot_every_step: bool = False
     profile_artifact_id: Optional[str] = None
 
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def validate_steps(cls, values: dict) -> dict:
         steps = values.get("steps") or []
         if not steps:
@@ -152,7 +152,7 @@ class AgentStepsRequest(BaseModel):
     profile_artifact_id: Optional[str] = None
     llm: Optional[AgentLlmConfig] = None
 
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def validate_agent(cls, values: dict) -> dict:
         task = values.get("task")
         steps = values.get("steps")
