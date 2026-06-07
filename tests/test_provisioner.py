@@ -51,6 +51,7 @@ def test_chromium_from_env(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.slow
 async def test_chromium_provision_success(monkeypatch, tmp_path):
     prov = ChromiumContainerProvisioner(
         docker_bin="docker",
@@ -145,6 +146,7 @@ async def test_wait_for_port_timeout(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.slow
 async def test_chromium_provision_timeout_collects_diagnostics(monkeypatch, tmp_path):
     prov = ChromiumContainerProvisioner(
         docker_bin="docker",
@@ -187,6 +189,7 @@ async def test_chromium_provision_timeout_collects_diagnostics(monkeypatch, tmp_
 
 
 @pytest.mark.asyncio
+@pytest.mark.slow
 async def test_chromium_provision_falls_back_to_container_ip(monkeypatch, tmp_path):
     prov = ChromiumContainerProvisioner(
         docker_bin="docker",
