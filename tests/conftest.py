@@ -12,6 +12,38 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+SANDBOX_TEST_FILES = [
+    "test_agent_models.py",
+    "test_agent_planner.py",
+    "test_artifacts_api.py",
+    "test_artifacts_extra.py",
+    "test_charts_renderer.py",
+    "test_command_models_extra.py",
+    "test_commands_api.py",
+    "test_dashboard_api.py",
+    "test_database.py",
+    "test_events.py",
+    "test_events_models.py",
+    "test_grading_api.py",
+    "test_grading_runner_observability.py",
+    "test_internal_auth.py",
+    "test_jobs.py",
+    "test_main_api.py",
+    "test_models.py",
+    "test_orchestrator.py",
+    "test_package_init.py",
+    "test_paths.py",
+    "test_paths_extra.py",
+    "test_provisioner.py",
+    "test_rabbitmq.py",
+    "test_share_session.py",
+    "test_storage.py",
+    "test_worker.py",
+]
+
+if os.environ.get("SKIP_SANDBOX_API_TESTS") == "1":
+    collect_ignore = SANDBOX_TEST_FILES
+
 
 @pytest.fixture(scope="function")
 def client(tmp_path):
