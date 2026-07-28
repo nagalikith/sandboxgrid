@@ -15,7 +15,6 @@ This package is the reusable agent-image platform layer.
 
 ## Used By
 
-- `sandbox_api.apps.education`
+- `sandbox_api.apps.*`
 
-The education grading tool should be understood as an app on top of this
-platform, not as the platform itself.
+Applications are built on top of this platform layer.

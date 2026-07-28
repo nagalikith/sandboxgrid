@@ -8,8 +8,6 @@ import surface stable for tests and scripts.
 
 - `platform/`
   Reusable sandbox/agent-image platform surface.
-- `apps/education/`
-  Education-specific grading application built on the platform.
 
 ## Internal Layout
 
@@ -35,7 +33,5 @@ import surface stable for tests and scripts.
 - Put shared infrastructure under `core/`.
 - Put sandbox-related business logic under `sandboxes/`.
 - Put dashboard-specific code under `dashboards/`.
-- Put product-specific education code under `apps/education/`.
-- Treat the grading tool as a consumer of the platform layer.
 - Put UI templates under `web/templates/`.
 - Keep worker entrypoints stable unless a dedicated worker package is introduced.

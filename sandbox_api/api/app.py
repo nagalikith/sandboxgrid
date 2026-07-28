@@ -12,7 +12,6 @@ from ..artifacts import router as artifacts_router
 from ..sandboxes.commands import build_commands_router
 from ..dashboards.router import build_dashboard_router
 from ..core.database import init_db
-from ..apps.education.api import router as grading_router
 from ..core.rabbitmq import rabbitmq
 from ..share_session import router as share_session_router
 from ..web.templates import load_template_text
@@ -38,7 +37,6 @@ def create_app() -> FastAPI:
     app.include_router(artifacts_router)
     app.include_router(build_dashboard_router(orchestrator, rabbitmq))
     app.include_router(share_session_router)
-    app.include_router(grading_router)
 
     @app.get("/ui", response_class=HTMLResponse)
     def sandbox_ui() -> HTMLResponse:

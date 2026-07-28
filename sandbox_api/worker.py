@@ -7,11 +7,9 @@ import logging
 import os
 import shutil
 import time
-import traceback
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
-from urllib.parse import urlparse
 from uuid import uuid4
 
 from playwright.sync_api import sync_playwright
@@ -25,10 +23,7 @@ from .artifacts import ArtifactRecord, ArtifactRepository, ArtifactStore
 from .dashboards.charts_renderer import render_dashboard_charts
 from .dashboards.router import save_dashboard_payload
 from .core.database import init_db, engine
-from .apps.education.api_service import grade_result_summary_from_path
-from .apps.education.jobs import GradingJobStatus, grading_job_repo
-from .apps.education.runner import BrowserApplyError, GradeStudentArgs, run_grade_student
-from .core.jobs import CommandJob, DashboardUpdateJob, GradingJob, ProvisionJob, parse_job
+from .core.jobs import CommandJob, DashboardUpdateJob, ProvisionJob, parse_job
 from .sandboxes.models import SandboxRecord, SandboxRequest, SandboxStatus
 from .sandboxes.command_models import StepsRequest
 from .sandboxes.provisioner import build_default_provisioner
@@ -113,174 +108,6 @@ def _truncate(value: str, limit: int) -> str:
 
 def _write_text(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
-
-
-def _artifact_matches_canvas_base(artifact: ArtifactRecord, canvas_base: str) -> bool:
-    canvas_host = (urlparse(canvas_base).hostname or "").lower()
-    if not canvas_host:
-        return True
-    attributes = artifact.attributes or {}
-    candidate_hosts: list[str] = []
-    for key in ("origin", "url"):
-        value = attributes.get(key)
-        if isinstance(value, str):
-            host = urlparse(value).hostname
-            if host:
-                candidate_hosts.append(host.lower())
-    domain = attributes.get("domain")
-    if isinstance(domain, str) and domain.strip():
-        candidate_hosts.append(domain.strip().lower().lstrip("."))
-    for host in candidate_hosts:
-        if canvas_host == host or canvas_host.endswith(f".{host}") or host.endswith(f".{canvas_host}"):
-            return True
-    return False
-
-
-def _resolve_latest_session_share_profile_artifact_id(
-    artifact_repo: ArtifactRepository,
-    *,
-    owner_id: Optional[str],
-    canvas_base: str,
-) -> Optional[str]:
-    if not owner_id:
-        return None
-    records = artifact_repo.list(
-        owner_id=owner_id,
-        artifact_type="browser_profile",
-        source="session_share",
-        limit=20,
-    )
-    if not records:
-        return None
-    for artifact in records:
-        if _artifact_matches_canvas_base(artifact, canvas_base):
-            return artifact.artifact_id
-    return records[0].artifact_id
-
-
-def _build_grade_student_args(
-    payload,
-    internal_secret: str,
-    owner_id: Optional[str] = None,
-    artifact_repo: Optional[ArtifactRepository] = None,
-) -> GradeStudentArgs:
-    canvas_token = payload.canvas_token or os.getenv("CANVAS_TOKEN")
-    if not canvas_token:
-        raise RuntimeError("Missing Canvas token; set canvas_token or CANVAS_TOKEN.")
-    # Resolve three independent LLM roles so OCR/extraction can run on vLLM while
-    # rubric grading and annotation planning use a different Fireworks-hosted model.
-    grading_llm_base = (
-        payload.grading_llm_base
-        or payload.llm_base
-        or os.getenv("GRADING_LLM_BASE")
-        or os.getenv("FIREWORKS_API_BASE")
-        or os.getenv("LLM_API_BASE")
-        or "https://api.fireworks.ai/inference/v1"
-    )
-    grading_llm_model = (
-        payload.grading_llm_model
-        or payload.llm_model
-        or os.getenv("GRADING_LLM_MODEL")
-        or os.getenv("FIREWORKS_GRADING_MODEL")
-        or os.getenv("LLM_MODEL")
-        or "accounts/fireworks/models/kimi-k2p5"
-    )
-    grading_llm_key = (
-        os.getenv("GRADING_LLM_API_KEY")
-        or os.getenv("FIREWORKS_API_KEY")
-        or os.getenv("LLM_API_KEY")
-    )
-    extraction_llm_base = (
-        payload.extraction_llm_base
-        or os.getenv("EXTRACTION_LLM_BASE")
-        or os.getenv("VLLM_API_BASE")
-        or os.getenv("FIREWORKS_API_BASE")
-        or grading_llm_base
-    )
-    extraction_llm_model = (
-        payload.extraction_llm_model
-        or os.getenv("EXTRACTION_LLM_MODEL")
-        or os.getenv("VLLM_MODEL")
-        or os.getenv("FIREWORKS_VISION_MODEL")
-    )
-    extraction_llm_key = (
-        os.getenv("EXTRACTION_LLM_API_KEY")
-        or os.getenv("VLLM_API_KEY")
-        or os.getenv("FIREWORKS_API_KEY")
-        or os.getenv("LLM_API_KEY")
-    )
-    annotation_llm_base = (
-        payload.annotation_llm_base
-        or os.getenv("ANNOTATION_LLM_BASE")
-        or grading_llm_base
-    )
-    annotation_llm_model = (
-        payload.annotation_llm_model
-        or os.getenv("ANNOTATION_LLM_MODEL")
-        or grading_llm_model
-    )
-    annotation_llm_key = (
-        os.getenv("ANNOTATION_LLM_API_KEY")
-        or os.getenv("GRADING_LLM_API_KEY")
-        or os.getenv("FIREWORKS_API_KEY")
-        or os.getenv("LLM_API_KEY")
-    )
-    sandbox_api = os.getenv("SANDBOX_API", "http://localhost:8000")
-    agent_id = payload.agent_id or owner_id or os.getenv("SANDBOX_AGENT_ID", "grader")
-    output_dir = payload.output_dir or "./artifacts/grading_runs"
-    policy = payload.policy or ""
-    resolved_profile_artifact_id = payload.profile_artifact_id
-    if not resolved_profile_artifact_id:
-        repo = artifact_repo or ArtifactRepository(engine)
-        resolved_profile_artifact_id = _resolve_latest_session_share_profile_artifact_id(
-            repo,
-            owner_id=owner_id,
-            canvas_base=str(payload.canvas_base),
-        )
-    logger.info(
-        "grading_args_resolved owner_id=%s course_id=%s assignment_id=%s student_id=%s sandbox_id=%s profile_artifact_id=%s grading_model=%s extraction_model=%s annotation_model=%s",
-        owner_id,
-        payload.course_id,
-        payload.assignment_id,
-        payload.student_id,
-        payload.sandbox_id,
-        resolved_profile_artifact_id,
-        grading_llm_model,
-        extraction_llm_model,
-        annotation_llm_model,
-    )
-
-    return GradeStudentArgs(
-        course_id=payload.course_id,
-        assignment_id=payload.assignment_id,
-        student_id=payload.student_id,
-        canvas_base=str(payload.canvas_base),
-        canvas_token=canvas_token,
-        internal_secret=internal_secret,
-        sandbox_api=sandbox_api,
-        agent_id=agent_id,
-        sandbox_id=payload.sandbox_id,
-        profile_artifact_id=resolved_profile_artifact_id,
-        policy=policy,
-        selectors_json=payload.selectors_json,
-        output_dir=output_dir,
-        vision_max_pages=payload.vision_max_pages,
-        text_max_chars=payload.text_max_chars,
-        min_text_chars=payload.min_text_chars,
-        extraction_llm_base=extraction_llm_base,
-        extraction_llm_key=extraction_llm_key,
-        extraction_llm_model=extraction_llm_model,
-        grading_llm_base=grading_llm_base,
-        grading_llm_key=grading_llm_key,
-        grading_llm_model=grading_llm_model,
-        annotation_llm_base=annotation_llm_base,
-        annotation_llm_key=annotation_llm_key,
-        annotation_llm_model=annotation_llm_model,
-        grade_result_path=payload.grade_result_path,
-        reuse_latest_grade=payload.reuse_latest_grade,
-        navigation_mode=payload.navigation_mode,
-        strict_ui_checks=payload.strict_ui_checks,
-    )
 
 
 def _truncate_text(value: str, limit: int = 2000) -> str:
@@ -1784,89 +1611,6 @@ async def handle_dashboard_update(
     )
 
 
-async def handle_grading_job(job: GradingJob) -> None:
-    logger.info("grading_job_worker start job_id=%s owner_id=%s", job.job_id, job.owner_id)
-    now = datetime.now(timezone.utc)
-    grading_job_repo.update(
-        job.job_id,
-        status=GradingJobStatus.running.value,
-        started_at=now,
-        updated_at=now,
-    )
-    internal_secret = os.getenv("INTERNAL_AUTH_SECRET")
-    if not internal_secret:
-        logger.error("grading_job_worker missing_internal_auth_secret job_id=%s", job.job_id)
-        now = datetime.now(timezone.utc)
-        grading_job_repo.update(
-            job.job_id,
-            status=GradingJobStatus.failed.value,
-            error_message="Missing INTERNAL_AUTH_SECRET.",
-            updated_at=now,
-            finished_at=now,
-        )
-        return
-
-    try:
-        args = _build_grade_student_args(job.payload, internal_secret, owner_id=job.owner_id)
-        sandbox_ops = InternalSandboxOps(owner_id=job.owner_id)
-        outcome = await asyncio.to_thread(run_grade_student, args, sandbox_ops)
-        logger.info(
-            "grading_job_worker success job_id=%s run_dir=%s grade_result_path=%s llm_observability_path=%s",
-            job.job_id,
-            outcome.run_dir,
-            outcome.grade_result_path,
-            outcome.llm_observability_path,
-        )
-        grading_job_repo.update(
-            job.job_id,
-            status=GradingJobStatus.succeeded.value,
-            result={
-                "run_dir": str(outcome.run_dir.resolve()),
-                "grade_result_path": str(outcome.grade_result_path.resolve()),
-                "grade_summary": grade_result_summary_from_path(outcome.grade_result_path),
-                "speedgrader_state_path": str(outcome.speedgrader_state_path.resolve()),
-                "llm_observability_path": str(outcome.llm_observability_path.resolve()),
-                "sandbox_id": outcome.sandbox_id,
-                "browser_url": outcome.browser_url,
-                "dashboard_url": outcome.dashboard_url,
-                "stdout_tail": "",
-                "stderr_tail": "",
-            },
-            updated_at=datetime.now(timezone.utc),
-            finished_at=datetime.now(timezone.utc),
-        )
-    except BrowserApplyError as exc:
-        logger.exception("grading_job_worker browser_apply_failed job_id=%s error=%s", job.job_id, exc)
-        grading_job_repo.update(
-            job.job_id,
-            status=GradingJobStatus.failed.value,
-            error_message=_truncate_text(str(exc)),
-            result={
-                "run_dir": str(exc.run_dir.resolve()),
-                "grade_result_path": str(exc.grade_result_path.resolve()),
-                "grade_summary": grade_result_summary_from_path(exc.grade_result_path),
-                "llm_observability_path": str(exc.llm_observability_path.resolve()),
-                "speedgrader_state_path": str(exc.speedgrader_state_path.resolve()) if exc.speedgrader_state_path else None,
-                "sandbox_id": exc.sandbox_id,
-                "browser_url": exc.browser_url,
-                "dashboard_url": exc.dashboard_url,
-                "traceback": _truncate_text(traceback.format_exc()),
-            },
-            updated_at=datetime.now(timezone.utc),
-            finished_at=datetime.now(timezone.utc),
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("grading_job_worker failed job_id=%s error=%s", job.job_id, exc)
-        grading_job_repo.update(
-            job.job_id,
-            status=GradingJobStatus.failed.value,
-            error_message=_truncate_text(str(exc)),
-            result={"traceback": _truncate_text(traceback.format_exc())},
-            updated_at=datetime.now(timezone.utc),
-            finished_at=datetime.now(timezone.utc),
-        )
-
-
 async def dispatch_job(
     job,
     repository: SandboxRepository,
@@ -1884,9 +1628,6 @@ async def dispatch_job(
     if isinstance(job, DashboardUpdateJob):
         await handle_dashboard_update(job, repository, rabbit, artifact_repo)
         return
-    if isinstance(job, GradingJob):
-        await handle_grading_job(job)
-        return
     logger.error("Unhandled job type: %s", job.type)
 
 
@@ -1897,7 +1638,6 @@ async def handle_message(
     artifact_store: ArtifactStore,
     provisioner,
     rabbit: RabbitMQ,
-    grading_semaphore: asyncio.Semaphore,
 ) -> None:
     async with message.process():
         try:
@@ -1905,11 +1645,7 @@ async def handle_message(
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to parse job: %s", exc)
             return
-        if isinstance(job, GradingJob):
-            async with grading_semaphore:
-                await dispatch_job(job, repository, artifact_repo, artifact_store, provisioner, rabbit)
-        else:
-            await dispatch_job(job, repository, artifact_repo, artifact_store, provisioner, rabbit)
+        await dispatch_job(job, repository, artifact_repo, artifact_store, provisioner, rabbit)
 
 
 async def main() -> None:
@@ -1919,13 +1655,7 @@ async def main() -> None:
     artifact_repo = ArtifactRepository(engine)
     artifact_store = ArtifactStore(Path(os.getenv("SANDBOX_ARTIFACTS_ROOT", "./artifacts")))
     provisioner = build_default_provisioner()
-    grading_concurrency = max(1, int(os.getenv("GRADING_WORKER_CONCURRENCY", "1")))
-    prefetch_env = os.getenv("RABBITMQ_PREFETCH")
-    if prefetch_env:
-        prefetch = max(1, int(prefetch_env))
-    else:
-        prefetch = grading_concurrency
-    grading_semaphore = asyncio.Semaphore(grading_concurrency)
+    prefetch = int(os.getenv("RABBITMQ_PREFETCH", "1"))
     rabbit = RabbitMQ(prefetch=prefetch)
     await rabbit.connect()
 
@@ -1937,7 +1667,6 @@ async def main() -> None:
             artifact_store,
             provisioner,
             rabbit,
-            grading_semaphore,
         )
 
     await rabbit.consume_jobs(handler)
