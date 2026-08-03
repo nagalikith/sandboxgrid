@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import structlog
+
 import hashlib
 import os
 from datetime import datetime, timedelta, timezone
@@ -9,7 +11,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import ConfigDict, BaseModel, Field
 from sqlalchemy import Column, JSON
 from sqlmodel import Field as SQLField, Session, SQLModel, select
 
@@ -165,6 +167,7 @@ class ArtifactRepository:
         *,
         owner_id: str,
         session_id: Optional[str] = None,
+        sandbox_id: Optional[str] = None,
         artifact_type: Optional[str] = None,
         source: Optional[str] = None,
         run_id: Optional[str] = None,
@@ -179,6 +182,8 @@ class ArtifactRepository:
         stmt = select(ArtifactRow).where(ArtifactRow.owner_id == owner_id)
         if session_id:
             stmt = stmt.where(ArtifactRow.session_id == session_id)
+        if sandbox_id:
+            stmt = stmt.where(ArtifactRow.sandbox_id == sandbox_id)
         if artifact_type:
             stmt = stmt.where(ArtifactRow.artifact_type == artifact_type)
         if source:
@@ -229,6 +234,44 @@ class ArtifactRepository:
             row = session.get(ArtifactRow, artifact_id)
             if not row:
                 return None
+            row.updated_at = datetime.now(timezone.utc)
+            session.add(row)
+            session.commit()
+            session.refresh(row)
+            return row.to_record()
+
+    def list_stale(
+        self, *, created_before: datetime, limit: int = 1000
+    ) -> List[ArtifactRecord]:
+        """GC-only: list artifacts older than a cutoff across all owners."""
+        stmt = (
+            select(ArtifactRow)
+            .where(ArtifactRow.created_at < created_before)
+            .order_by(ArtifactRow.created_at.asc())
+            .limit(limit)
+        )
+        with Session(self.engine) as session:
+            rows = session.exec(stmt).all()
+            return [row.to_record() for row in rows]
+
+    def delete_artifact(self, artifact_id: str) -> Optional[ArtifactRecord]:
+        with Session(self.engine) as session:
+            row = session.get(ArtifactRow, artifact_id)
+            if not row:
+                return None
+            record = row.to_record()
+            session.delete(row)
+            session.commit()
+            return record
+
+    def update_attributes(
+        self, artifact_id: str, attributes: Dict[str, Any]
+    ) -> Optional[ArtifactRecord]:
+        with Session(self.engine) as session:
+            row = session.get(ArtifactRow, artifact_id)
+            if not row:
+                return None
+            row.attributes = attributes
             row.updated_at = datetime.now(timezone.utc)
             session.add(row)
             session.commit()
@@ -292,6 +335,96 @@ class ArtifactStore:
         )
 
 
+
+def register_artifact_file(
+    repository,
+    *,
+    owner_id: str,
+    sandbox_id: str,
+    session_id: Optional[str],
+    run_id: str,
+    command_id: str,
+    artifact_type: str,
+    artifact_format: str,
+    mime_type: str,
+    file_path: Path,
+    filename: str,
+    tags: Optional[List[str]] = None,
+    source: str = "steps",
+    sensitivity: Optional[str] = None,
+    volatility: Optional[str] = None,
+    emit_event=None,
+) -> ArtifactRecord:
+    """Single registration path for worker/dashboard-produced artifacts.
+
+    Creates the metadata row, computes size + sha256, stores the blob pointer,
+    and emits the canonical artifact_ready event (command_id + run_id +
+    session_id) when an emit_event callback is provided.
+    """
+    # SB-07: per-run artifact cap (skip + log when exceeded).
+    max_per_run = int(os.getenv("MAX_ARTIFACTS_PER_RUN", "200"))
+    if max_per_run > 0:
+        existing = len(
+            repository.list(owner_id=owner_id, run_id=run_id, limit=max_per_run + 1)
+        )
+        if existing >= max_per_run:
+            logger.warning("artifact_run_cap_reached", run_id=run_id, limit=max_per_run)
+            return None
+
+    now = datetime.now(timezone.utc)
+    record = ArtifactRecord(
+        artifact_id=f"art_{uuid4().hex[:12]}",
+        owner_id=owner_id,
+        session_id=session_id,
+        sandbox_id=sandbox_id,
+        artifact_type=artifact_type,
+        source=source,
+        run_id=run_id,
+        volatility=volatility,
+        artifact_format=artifact_format,
+        created_at=now,
+        updated_at=now,
+        size_bytes=None,
+        mime_type=mime_type,
+        filename=filename,
+        checksum_sha256=None,
+        tags=tags or [],
+        sensitivity=sensitivity,
+        attributes=None,
+        blob_path=None,
+    )
+    created = repository.create(record)
+    size_bytes = file_path.stat().st_size
+    hasher = hashlib.sha256()
+    with file_path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(8192), b""):
+            hasher.update(chunk)
+    updated = repository.update_blob(
+        created.artifact_id,
+        blob_path=str(file_path.resolve()),
+        size_bytes=size_bytes,
+        checksum_sha256=hasher.hexdigest(),
+        mime_type=mime_type,
+    )
+    result = updated or created
+    if emit_event:
+        emit_event(
+            {
+                "type": "artifact_ready",
+                "artifact_id": result.artifact_id,
+                "sandbox_id": sandbox_id,
+                "command_id": command_id,
+                "run_id": run_id,
+                "session_id": session_id,
+                "filename": filename,
+                "artifact_type": artifact_type,
+                "artifact_format": artifact_format,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+    return result
+
+
 class ArtifactCreate(BaseModel):
     session_id: Optional[str] = None
     sandbox_id: Optional[str] = None
@@ -307,7 +440,7 @@ class ArtifactCreate(BaseModel):
     mime_type: Optional[str] = None
 
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True
 
 
 class ArtifactBlobPointer(BaseModel):
@@ -339,7 +472,7 @@ class ArtifactResponse(BaseModel):
     blob: Optional[ArtifactBlobPointer] = None
 
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True
 
 
 class ArtifactListResponse(BaseModel):
@@ -376,6 +509,9 @@ class ArtifactManifestResponse(BaseModel):
     count: int
 
 
+logger = structlog.get_logger(__name__)
+
+
 repository = ArtifactRepository(engine)
 store = ArtifactStore(Path(os.getenv("SANDBOX_ARTIFACTS_ROOT", "./artifacts")))
 router = APIRouter(tags=["artifacts"])
@@ -384,21 +520,23 @@ require_internal_auth_no_body = internal_auth_dependency(enforce_body_hash=False
 
 
 def _build_response(record: ArtifactRecord, *, parents: Optional[List[str]] = None) -> ArtifactResponse:
+    # ArtifactResponse aliases (type/format) are required by pydantic v2.11;
+    # field-name population is ignored, so construct via the aliases.
     return ArtifactResponse(
         artifact_id=record.artifact_id,
         session_id=record.session_id,
         sandbox_id=record.sandbox_id,
-        artifact_type=record.artifact_type,
+        type=record.artifact_type,
         source=record.source,
         run_id=record.run_id,
         volatility=record.volatility,
-        artifact_format=record.artifact_format,
+        format=record.artifact_format,
         created_at=record.created_at,
         updated_at=record.updated_at,
         size_bytes=record.size_bytes,
         mime_type=record.mime_type,
         filename=record.filename,
-        hash_value=record.checksum_sha256,
+        hash=record.checksum_sha256,
         tags=record.tags,
         sensitivity=record.sensitivity,
         attributes=record.attributes,
@@ -468,20 +606,47 @@ async def upload_blob(
     if presign:
         upload_url = str(request.url.remove_query_params("presign"))
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+        attributes = dict(record.attributes or {})
+        attributes["upload_expires_at"] = expires_at.isoformat()
+        repository.update_attributes(record.artifact_id, attributes)
         return ArtifactBlobResult(
             upload=ArtifactUploadInfo(upload_url=upload_url, expires_at=expires_at)
         )
+
+    # SB-07: enforce presign expiry when one was issued.
+    attributes = record.attributes or {}
+    expires_raw = attributes.get("upload_expires_at")
+    if expires_raw:
+        try:
+            expires_at = datetime.fromisoformat(expires_raw)
+            if datetime.now(timezone.utc) > expires_at:
+                raise HTTPException(
+                    status_code=status.HTTP_410_GONE, detail="Upload link expired."
+                )
+        except (ValueError, TypeError):
+            pass
 
     blob_path = store.blob_path(record.owner_id, record.artifact_id)
     blob_path.parent.mkdir(parents=True, exist_ok=True)
     size_bytes = 0
     hasher = hashlib.sha256()
+    max_upload_bytes = int(os.getenv("ARTIFACT_MAX_UPLOAD_BYTES", "52428800"))
     with blob_path.open("wb") as handle:
         async for chunk in request.stream():
             if not chunk:
                 continue
-            handle.write(chunk)
             size_bytes += len(chunk)
+            if max_upload_bytes > 0 and size_bytes > max_upload_bytes:
+                handle.close()
+                try:
+                    blob_path.unlink()
+                except OSError:
+                    pass
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail=f"Upload exceeds maximum size of {max_upload_bytes} bytes.",
+                )
+            handle.write(chunk)
             hasher.update(chunk)
 
     if size_bytes == 0:
@@ -537,6 +702,49 @@ async def download_blob(
         media_type=record.mime_type or "application/octet-stream",
         filename=record.filename or blob_path.name,
     )
+
+
+@router.delete(
+    "/artifacts/{artifact_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete artifact (row + blob)",
+)
+async def delete_artifact(
+    artifact_id: str,
+    agent_id: str = Depends(require_internal_auth),
+) -> None:
+    record = repository.get(artifact_id)
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Artifact not found.")
+    if record.owner_id != agent_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden.")
+    deleted = repository.delete_artifact(artifact_id)
+    if deleted and deleted.blob_path:
+        try:
+            Path(deleted.blob_path).unlink()
+        except OSError:
+            pass
+    return None
+
+
+@router.delete(
+    "/sessions/{session_id}/artifacts",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete all artifacts for a session",
+)
+async def delete_session_artifacts(
+    session_id: str,
+    agent_id: str = Depends(require_internal_auth),
+) -> None:
+    records = repository.list(owner_id=agent_id, session_id=session_id, limit=1000)
+    for record in records:
+        repository.delete_artifact(record.artifact_id)
+        if record.blob_path:
+            try:
+                Path(record.blob_path).unlink()
+            except OSError:
+                pass
+    return None
 
 
 @router.get(

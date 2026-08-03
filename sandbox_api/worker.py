@@ -19,7 +19,12 @@ from .core.env import load_repo_env
 load_repo_env()
 
 from .sandboxes.agent_planner import plan_steps
-from .artifacts import ArtifactRecord, ArtifactRepository, ArtifactStore
+from .artifacts import (
+    ArtifactRecord,
+    ArtifactRepository,
+    ArtifactStore,
+    register_artifact_file,
+)
 from .dashboards.charts_renderer import render_dashboard_charts
 from .dashboards.router import save_dashboard_payload
 from .core.database import init_db, engine
@@ -275,6 +280,7 @@ def _capture_page_state(
     run_id: str,
     artifact_repo: ArtifactRepository,
     emit_event: Callable[[dict[str, Any]], None],
+    session_id: str | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     html = page.content()
     try:
@@ -339,109 +345,89 @@ def _capture_page_state(
 
     artifact_ids: list[str] = []
 
-    html_artifact = _register_text_artifact(
+    html_artifact = register_artifact_file(
         artifact_repo,
         owner_id=record.owner_id,
         sandbox_id=record.sandbox_id,
+        session_id=session_id,
         run_id=run_id,
+        command_id=run_id,
         file_path=html_path,
         filename=html_path.name,
         artifact_format="html",
         mime_type="text/html",
         artifact_type="dom_snapshot",
         tags=["page_state", "html"],
+        sensitivity="sensitive",
+        volatility="ephemeral",
+        emit_event=emit_event,
     )
-    artifact_ids.append(html_artifact.artifact_id)
-    emit_event(
-        {
-            "type": "artifact_ready",
-            "artifact_id": html_artifact.artifact_id,
-            "sandbox_id": record.sandbox_id,
-            "command_id": run_id,
-            "filename": html_path.name,
-            "artifact_type": html_artifact.artifact_type,
-            "artifact_format": html_artifact.artifact_format,
-            "timestamp": _now_iso(),
-        }
-    )
+    if html_artifact:
+        if html_artifact:
+            artifact_ids.append(html_artifact.artifact_id)
 
-    text_artifact = _register_text_artifact(
+    text_artifact = register_artifact_file(
         artifact_repo,
         owner_id=record.owner_id,
         sandbox_id=record.sandbox_id,
+        session_id=session_id,
         run_id=run_id,
+        command_id=run_id,
         file_path=text_path,
         filename=text_path.name,
         artifact_format="txt",
         mime_type="text/plain",
         artifact_type="page_text",
         tags=["page_state", "text"],
+        sensitivity="sensitive",
+        volatility="ephemeral",
+        emit_event=emit_event,
     )
-    artifact_ids.append(text_artifact.artifact_id)
-    emit_event(
-        {
-            "type": "artifact_ready",
-            "artifact_id": text_artifact.artifact_id,
-            "sandbox_id": record.sandbox_id,
-            "command_id": run_id,
-            "filename": text_path.name,
-            "artifact_type": text_artifact.artifact_type,
-            "artifact_format": text_artifact.artifact_format,
-            "timestamp": _now_iso(),
-        }
-    )
+    if text_artifact:
+        if text_artifact:
+            artifact_ids.append(text_artifact.artifact_id)
 
-    a11y_artifact = _register_text_artifact(
+    a11y_artifact = register_artifact_file(
         artifact_repo,
         owner_id=record.owner_id,
         sandbox_id=record.sandbox_id,
+        session_id=session_id,
         run_id=run_id,
+        command_id=run_id,
         file_path=a11y_path,
         filename=a11y_path.name,
         artifact_format="json",
         mime_type="application/json",
         artifact_type="dom_snapshot",
         tags=["page_state", "a11y"],
+        sensitivity="sensitive",
+        volatility="ephemeral",
+        emit_event=emit_event,
     )
-    artifact_ids.append(a11y_artifact.artifact_id)
-    emit_event(
-        {
-            "type": "artifact_ready",
-            "artifact_id": a11y_artifact.artifact_id,
-            "sandbox_id": record.sandbox_id,
-            "command_id": run_id,
-            "filename": a11y_path.name,
-            "artifact_type": a11y_artifact.artifact_type,
-            "artifact_format": a11y_artifact.artifact_format,
-            "timestamp": _now_iso(),
-        }
-    )
+    if a11y_artifact:
+        if a11y_artifact:
+            artifact_ids.append(a11y_artifact.artifact_id)
 
-    state_artifact = _register_text_artifact(
+    state_artifact = register_artifact_file(
         artifact_repo,
         owner_id=record.owner_id,
         sandbox_id=record.sandbox_id,
+        session_id=session_id,
         run_id=run_id,
+        command_id=run_id,
         file_path=state_path,
         filename=state_path.name,
         artifact_format="json",
         mime_type="application/json",
         artifact_type="page_state",
         tags=["page_state", "structured"],
+        sensitivity="sensitive",
+        volatility="ephemeral",
+        emit_event=emit_event,
     )
-    artifact_ids.append(state_artifact.artifact_id)
-    emit_event(
-        {
-            "type": "artifact_ready",
-            "artifact_id": state_artifact.artifact_id,
-            "sandbox_id": record.sandbox_id,
-            "command_id": run_id,
-            "filename": state_path.name,
-            "artifact_type": state_artifact.artifact_type,
-            "artifact_format": state_artifact.artifact_format,
-            "timestamp": _now_iso(),
-        }
-    )
+    if state_artifact:
+        if state_artifact:
+            artifact_ids.append(state_artifact.artifact_id)
 
     llm_dom_limit = int(os.getenv("LLM_DOM_CHAR_LIMIT", "40000"))
     llm_text_limit = int(os.getenv("LLM_TEXT_CHAR_LIMIT", "20000"))
@@ -793,106 +779,6 @@ def _perform_locator_action(page, step, action_name: str) -> None:
         raise RuntimeError(f"Failed to perform {action_name} ({details}).")
     raise RuntimeError(f"Failed to perform {action_name}.")
 
-def _register_screenshot(
-    repository: ArtifactRepository,
-    store: ArtifactStore,
-    *,
-    owner_id: str,
-    sandbox_id: str,
-    run_id: str,
-    file_path: Path,
-    filename: str,
-) -> ArtifactRecord:
-    now = datetime.now(timezone.utc)
-    record = ArtifactRecord(
-        artifact_id=f"art_{uuid4().hex[:12]}",
-        owner_id=owner_id,
-        session_id=None,
-        sandbox_id=sandbox_id,
-        artifact_type="screenshot",
-        source="steps",
-        run_id=run_id,
-        volatility=None,
-        artifact_format="png",
-        created_at=now,
-        updated_at=now,
-        size_bytes=None,
-        mime_type="image/png",
-        filename=filename,
-        checksum_sha256=None,
-        tags=["steps"],
-        sensitivity=None,
-        attributes=None,
-        blob_path=None,
-    )
-    created = repository.create(record)
-    size_bytes = file_path.stat().st_size
-    hasher = hashlib.sha256()
-    with file_path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(8192), b""):
-            hasher.update(chunk)
-    updated = repository.update_blob(
-        created.artifact_id,
-        blob_path=str(file_path.resolve()),
-        size_bytes=size_bytes,
-        checksum_sha256=hasher.hexdigest(),
-        mime_type="image/png",
-    )
-    return updated or created
-
-
-def _register_text_artifact(
-    repository: ArtifactRepository,
-    *,
-    owner_id: str,
-    sandbox_id: str,
-    run_id: str,
-    file_path: Path,
-    filename: str,
-    artifact_format: str,
-    mime_type: str,
-    artifact_type: str = "dom_snapshot",
-    tags: list[str] | None = None,
-    source: str = "steps",
-) -> ArtifactRecord:
-    now = datetime.now(timezone.utc)
-    record = ArtifactRecord(
-        artifact_id=f"art_{uuid4().hex[:12]}",
-        owner_id=owner_id,
-        session_id=None,
-        sandbox_id=sandbox_id,
-        artifact_type=artifact_type,
-        source=source,
-        run_id=run_id,
-        volatility=None,
-        artifact_format=artifact_format,
-        created_at=now,
-        updated_at=now,
-        size_bytes=None,
-        mime_type=mime_type,
-        filename=filename,
-        checksum_sha256=None,
-        tags=tags or ["steps", artifact_type],
-        sensitivity=None,
-        attributes=None,
-        blob_path=None,
-    )
-    created = repository.create(record)
-    size_bytes = file_path.stat().st_size
-    hasher = hashlib.sha256()
-    with file_path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(8192), b""):
-            hasher.update(chunk)
-    updated = repository.update_blob(
-        created.artifact_id,
-        blob_path=str(file_path.resolve()),
-        size_bytes=size_bytes,
-        checksum_sha256=hasher.hexdigest(),
-        mime_type=mime_type,
-    )
-    return updated or created
-
-
 def _execute_steps(
     page,
     request: StepsRequest,
@@ -904,6 +790,7 @@ def _execute_steps(
     artifact_store: ArtifactStore,
     emit_event: Callable[[dict[str, Any]], None],
     log: Callable[[str], None],
+    session_id: str | None = None,
 ) -> list[str]:
     artifact_ids: list[str] = []
     for index, step in enumerate(request.steps, start=1):
@@ -1002,6 +889,7 @@ def _execute_steps(
                 run_id=command_id,
                 artifact_repo=artifact_repo,
                 emit_event=emit_event,
+                session_id=session_id,
             )
             artifact_ids.extend(state_artifacts)
             log(f"Captured page state (context keys: {', '.join(llm_context.keys())})")
@@ -1014,28 +902,26 @@ def _execute_steps(
             filename = f"{name}.png"
             file_path = base_dir / filename
             page.screenshot(path=str(file_path))
-            artifact = _register_screenshot(
+            artifact = register_artifact_file(
                 artifact_repo,
-                artifact_store,
                 owner_id=record.owner_id,
                 sandbox_id=record.sandbox_id,
+                session_id=session_id,
                 run_id=command_id,
+                command_id=command_id,
                 file_path=file_path,
                 filename=filename,
+                artifact_format="png",
+                mime_type="image/png",
+                artifact_type="screenshot",
+                tags=["steps"],
+                sensitivity="sensitive",
+                volatility="ephemeral",
+                emit_event=emit_event,
             )
-            artifact_ids.append(artifact.artifact_id)
-            emit_event(
-                {
-                    "type": "artifact_ready",
-                    "artifact_id": artifact.artifact_id,
-                    "sandbox_id": record.sandbox_id,
-                    "command_id": command_id,
-                    "filename": filename,
-                    "artifact_type": "screenshot",
-                    "artifact_format": "png",
-                    "timestamp": _now_iso(),
-                }
-            )
+            if artifact:
+                if artifact:
+                    artifact_ids.append(artifact.artifact_id)
 
         if step.action == "dom_snapshot":
             name = _safe_filename(step.name or step_label)
@@ -1047,17 +933,22 @@ def _execute_steps(
                 filename = f"{name}.json"
                 file_path = base_dir / filename
                 file_path.write_text(content, encoding="utf-8")
-                artifact = _register_text_artifact(
+                artifact = register_artifact_file(
                     artifact_repo,
                     owner_id=record.owner_id,
                     sandbox_id=record.sandbox_id,
+                    session_id=session_id,
                     run_id=command_id,
+                    command_id=command_id,
                     file_path=file_path,
                     filename=filename,
                     artifact_format="json",
                     mime_type="application/json",
                     artifact_type="dom_snapshot",
                     tags=["steps", "dom_snapshot", "a11y"],
+                    sensitivity="sensitive",
+                    volatility="ephemeral",
+                    emit_event=emit_event,
                 )
             else:
                 if step.selector:
@@ -1070,31 +961,26 @@ def _execute_steps(
                 filename = f"{name}.html"
                 file_path = base_dir / filename
                 file_path.write_text(content, encoding="utf-8")
-                artifact = _register_text_artifact(
+                artifact = register_artifact_file(
                     artifact_repo,
                     owner_id=record.owner_id,
                     sandbox_id=record.sandbox_id,
+                    session_id=session_id,
                     run_id=command_id,
+                    command_id=command_id,
                     file_path=file_path,
                     filename=filename,
                     artifact_format="html",
                     mime_type="text/html",
                     artifact_type="dom_snapshot",
                     tags=["steps", "dom_snapshot", "html"],
+                    sensitivity="sensitive",
+                    volatility="ephemeral",
+                    emit_event=emit_event,
                 )
-            artifact_ids.append(artifact.artifact_id)
-            emit_event(
-                {
-                    "type": "artifact_ready",
-                    "artifact_id": artifact.artifact_id,
-                    "sandbox_id": record.sandbox_id,
-                    "command_id": command_id,
-                    "filename": filename,
-                    "artifact_type": artifact.artifact_type,
-                    "artifact_format": artifact.artifact_format,
-                    "timestamp": _now_iso(),
-                }
-            )
+            if artifact:
+                if artifact:
+                    artifact_ids.append(artifact.artifact_id)
     return artifact_ids
 
 
@@ -1118,6 +1004,7 @@ def _run_steps(
         artifact_id=getattr(request, "profile_artifact_id", None),
     )
 
+    session_id = getattr(request, "session_id", None)
     with sync_playwright() as playwright:
         browser, context, page = BrowserRunner(cfg, log).attach(playwright, storage_state_path=profile_path)
         artifact_ids = _execute_steps(
@@ -1130,6 +1017,7 @@ def _run_steps(
             artifact_store=artifact_store,
             emit_event=emit_event,
             log=log,
+            session_id=session_id,
         )
         try:
             browser.close()
@@ -1137,6 +1025,35 @@ def _run_steps(
             pass
 
     return {"artifact_ids": artifact_ids}
+
+
+def _link_derived_artifacts(
+    artifact_repo,
+    *,
+    owner_id: str,
+    parent_id: str,
+    child_ids: list[str],
+) -> None:
+    """Link derived artifacts to their parent (relation=derived_from)."""
+    from .artifacts import ArtifactLinkRecord
+
+    now = datetime.now(timezone.utc)
+    links = [
+        ArtifactLinkRecord(
+            parent_id=parent_id,
+            child_id=child_id,
+            owner_id=owner_id,
+            relation="derived_from",
+            created_at=now,
+        )
+        for child_id in child_ids
+        if child_id != parent_id
+    ]
+    if links:
+        try:
+            artifact_repo.add_links(links)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("artifact_link_failed", error=str(exc), exc_info=True)
 
 
 def _run_agent(
@@ -1159,6 +1076,7 @@ def _run_agent(
         artifact_id=getattr(request, "profile_artifact_id", None),
     )
 
+    session_id = getattr(request, "session_id", None)
     with sync_playwright() as playwright:
         browser, context, page = BrowserRunner(cfg, log).attach(playwright, storage_state_path=profile_path)
         llm_context: dict[str, Any] = {}
@@ -1170,6 +1088,7 @@ def _run_agent(
                 run_id=command_id,
                 artifact_repo=artifact_repo,
                 emit_event=emit_event,
+                session_id=session_id,
             )
             artifact_ids.extend(state_artifacts)
 
@@ -1186,31 +1105,26 @@ def _run_agent(
         }
         plan_path = base_dir / "agent_plan.json"
         _write_text(plan_path, json.dumps(plan_payload, ensure_ascii=True, indent=2))
-        plan_artifact = _register_text_artifact(
+        plan_artifact = register_artifact_file(
             artifact_repo,
             owner_id=record.owner_id,
             sandbox_id=record.sandbox_id,
+            session_id=session_id,
             run_id=command_id,
+            command_id=command_id,
             file_path=plan_path,
             filename=plan_path.name,
             artifact_format="json",
             mime_type="application/json",
             artifact_type="agent_plan",
-            tags=["agent_plan"],
+            tags=["agent_plan", "key"],
+            sensitivity="internal",
+            volatility="stable",
+            emit_event=emit_event,
         )
-        artifact_ids.append(plan_artifact.artifact_id)
-        emit_event(
-            {
-                "type": "artifact_ready",
-                "artifact_id": plan_artifact.artifact_id,
-                "sandbox_id": record.sandbox_id,
-                "command_id": command_id,
-                "filename": plan_path.name,
-                "artifact_type": plan_artifact.artifact_type,
-                "artifact_format": plan_artifact.artifact_format,
-                "timestamp": _now_iso(),
-            }
-        )
+        if plan_artifact:
+            if plan_artifact:
+                artifact_ids.append(plan_artifact.artifact_id)
 
         artifact_ids.extend(
             _execute_steps(
@@ -1223,6 +1137,7 @@ def _run_agent(
                 artifact_store=artifact_store,
                 emit_event=emit_event,
                 log=log,
+                session_id=session_id,
             )
         )
 
@@ -1230,6 +1145,15 @@ def _run_agent(
             browser.close()
         except Exception:
             pass
+
+    # SB-04: screenshots/DOM/state artifacts derive from the plan artifact.
+    if artifact_ids:
+        _link_derived_artifacts(
+            artifact_repo,
+            owner_id=record.owner_id,
+            parent_id=plan_artifact.artifact_id,
+            child_ids=artifact_ids,
+        )
 
     return {"artifact_ids": artifact_ids}
 
@@ -1260,11 +1184,14 @@ def _capture_profile(
         except Exception:
             pass
 
-    artifact = _register_text_artifact(
+    session_id = getattr(request, "session_id", None)
+    artifact = register_artifact_file(
         artifact_repo,
         owner_id=record.owner_id,
         sandbox_id=record.sandbox_id,
+        session_id=session_id,
         run_id=command_id,
+        command_id=command_id,
         file_path=file_path,
         filename=filename,
         artifact_format="json",
@@ -1272,18 +1199,9 @@ def _capture_profile(
         artifact_type="browser_profile",
         tags=["profile", "storage_state"],
         source="profile",
-    )
-    emit_event(
-        {
-            "type": "artifact_ready",
-            "artifact_id": artifact.artifact_id,
-            "sandbox_id": record.sandbox_id,
-            "command_id": command_id,
-            "filename": filename,
-            "artifact_type": artifact.artifact_type,
-            "artifact_format": artifact.artifact_format,
-            "timestamp": _now_iso(),
-        }
+        sensitivity="sensitive",
+        volatility="stable",
+        emit_event=emit_event,
     )
 
     return {"artifact_id": artifact.artifact_id}
@@ -1316,6 +1234,25 @@ async def enforce_ttl(
     except Exception:  # noqa: BLE001
         logger.exception("Failed to stop sandbox %s", latest.sandbox_id)
     repository.set_terminated(latest.sandbox_id, message="Sandbox expired.")
+    # SB-06: purge sandbox-scoped artifacts on termination.
+    try:
+        from .artifacts import ArtifactRepository, ArtifactStore
+
+        purge_repo = ArtifactRepository(engine)
+        purge_store = ArtifactStore(Path(os.getenv("SANDBOX_ARTIFACTS_ROOT", "./artifacts")))
+        records = purge_repo.list(
+            owner_id=latest.owner_id, sandbox_id=sandbox_id, limit=1000
+        )
+        for artifact_record in records:
+            purge_repo.delete_artifact(artifact_record.artifact_id)
+            if artifact_record.blob_path:
+                try:
+                    Path(artifact_record.blob_path).unlink()
+                except OSError:
+                    pass
+        logger.info("sandbox_artifacts_purged", sandbox_id=sandbox_id, count=len(records))
+    except Exception:  # noqa: BLE001
+        logger.warning("sandbox_artifact_purge_failed", sandbox_id=sandbox_id, exc_info=True)
     await publish_event(
         rabbit,
         {
@@ -1483,16 +1420,59 @@ async def handle_command(
                     interactive=bool(job.payload.interactive),
                     storage_state_path=profile_path,
                 )
+                # SB-05: register the produced screenshot (was invisible)
+                png = Path(cfg.artifacts_dir) / f"{artifact_id}.png"
+                if png.exists():
+                    artifact = register_artifact_file(
+                        artifact_repo,
+                        owner_id=record.owner_id,
+                        sandbox_id=record.sandbox_id,
+                        session_id=getattr(job.payload, "session_id", None),
+                        run_id=job.command_id,
+                        command_id=job.command_id,
+                        file_path=png,
+                        filename=png.name,
+                        artifact_format="png",
+                        mime_type="image/png",
+                        artifact_type="screenshot",
+                        tags=["legacy", "run_browser"],
+                        source="legacy",
+                        sensitivity="sensitive",
+                        volatility="ephemeral",
+                        emit_event=emit_event,
+                    )
+                    return {"artifact_id": artifact.artifact_id}
                 return {"artifact_id": artifact_id}
             if job.command == "record":
-                session_id = record_session(
+                recorded_session_id = record_session(
                     cfg,
                     str(job.payload.url),
                     duration=int(job.payload.duration),
                     interactive=bool(job.payload.interactive),
                     storage_state_path=profile_path,
                 )
-                return {"session_id": session_id}
+                # SB-05: register the exported session bundle (was invisible)
+                bundle = Path(cfg.artifacts_dir) / f"{recorded_session_id}.tar.gz"
+                if bundle.exists():
+                    register_artifact_file(
+                        artifact_repo,
+                        owner_id=record.owner_id,
+                        sandbox_id=record.sandbox_id,
+                        session_id=getattr(job.payload, "session_id", None) or recorded_session_id,
+                        run_id=job.command_id,
+                        command_id=job.command_id,
+                        file_path=bundle,
+                        filename=bundle.name,
+                        artifact_format="tar.gz",
+                        mime_type="application/gzip",
+                        artifact_type="session_bundle",
+                        tags=["legacy", "record"],
+                        source="legacy",
+                        sensitivity="sensitive",
+                        volatility="stable",
+                        emit_event=emit_event,
+                    )
+                return {"session_id": recorded_session_id}
             if job.command == "replay":
                 replay_session(
                     cfg,
@@ -1648,6 +1628,38 @@ async def handle_message(
         await dispatch_job(job, repository, artifact_repo, artifact_store, provisioner, rabbit)
 
 
+async def _retention_sweep_loop(
+    artifact_repo,
+    artifact_store,
+) -> None:
+    """Periodically delete artifacts older than ARTIFACT_RETENTION_DAYS."""
+    retention_days = int(os.getenv("ARTIFACT_RETENTION_DAYS", "90"))
+    interval_hours = int(os.getenv("ARTIFACT_RETENTION_SWEEP_HOURS", "24"))
+    if retention_days <= 0:
+        logger.info("artifact_retention_disabled")
+        return
+    while True:
+        try:
+            cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+            stale = artifact_repo.list_stale(created_before=cutoff, limit=1000)
+            for artifact_record in stale:
+                artifact_repo.delete_artifact(artifact_record.artifact_id)
+                if artifact_record.blob_path:
+                    try:
+                        Path(artifact_record.blob_path).unlink()
+                    except OSError:
+                        pass
+            if stale:
+                logger.info(
+                    "artifact_retention_sweep",
+                    deleted=len(stale),
+                    cutoff=cutoff.isoformat(),
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("retention_sweep_failed", error=str(exc), exc_info=True)
+        await asyncio.sleep(interval_hours * 3600)
+
+
 async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     init_db()
@@ -1671,7 +1683,11 @@ async def main() -> None:
 
     await rabbit.consume_jobs(handler)
     logger.info("Worker listening for jobs.")
-    await asyncio.Event().wait()
+    sweep = asyncio.create_task(_retention_sweep_loop(artifact_repo, artifact_store))
+    try:
+        await asyncio.Event().wait()
+    finally:
+        sweep.cancel()
 
 
 if __name__ == "__main__":

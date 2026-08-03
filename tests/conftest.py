@@ -4,6 +4,13 @@ import shutil
 import sys
 from pathlib import Path
 
+# Module-level engines (e.g. sandbox_api.artifacts.engine) are created at
+# collection time, before any fixture sets DATABASE_URL. Default them to a
+# per-process scratch DB so tests never write into the repo's sandbox.db.
+os.environ.setdefault("DATABASE_URL", f"sqlite:////tmp/cua_sandbox_{os.getpid()}.db")
+os.environ.setdefault("INTERNAL_AUTH_SECRET", "test-secret")
+os.environ.setdefault("SANDBOX_ARTIFACTS_ROOT", f"/tmp/cua_sandbox_{os.getpid()}/artifacts")
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import SQLModel, Session, delete
@@ -43,29 +50,32 @@ if os.environ.get("SKIP_SANDBOX_API_TESTS") == "1":
     collect_ignore = SANDBOX_TEST_FILES
 
 
-@pytest.fixture(scope="function")
-def client(tmp_path):
-    base_dir = tmp_path
-    db_path = base_dir / "test.db"
-    artifacts_root = base_dir / "artifacts"
+@pytest.fixture(scope="session", autouse=True)
+def _sandbox_schema():
+    """Ensure module-level engines (created at collection with the scratch
+    DATABASE_URL default) have tables for tests that bypass the client fixture."""
+    from sandbox_api.core.database import engine
 
-    os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
-    os.environ["SANDBOX_ARTIFACTS_ROOT"] = str(artifacts_root)
-    os.environ["INTERNAL_AUTH_SECRET"] = "test-secret"
+    SQLModel.metadata.create_all(engine)
+    yield
 
-    SQLModel.metadata.clear()
 
-    def _load_module(name: str):
-        if name in sys.modules:
-            return importlib.reload(sys.modules[name])
-        return importlib.import_module(name)
+@pytest.fixture(scope="session")
+def _sandbox_app():
+    """Build the sandbox FastAPI app ONCE per session.
 
+    The sandbox modules bind engine/repository/store to env at import time;
+    conftest pins DATABASE_URL / SANDBOX_ARTIFACTS_ROOT / INTERNAL_AUTH_SECRET
+    at session scope, so one import + one TestClient serve every test. Per-test
+    isolation is provided by the client fixture's row/blob cleanup instead of
+    the old (very slow) per-test module reload dance.
+    """
+    import sandbox_api.api.app as _app
+    import sandbox_api.artifacts as artifacts
     import sandbox_api.core.database as database
-    importlib.reload(database)
-    artifacts = _load_module("sandbox_api.artifacts")
-    storage = _load_module("sandbox_api.sandboxes.storage")
-    main = _load_module("sandbox_api.main")
     import sandbox_api.core.rabbitmq as rabbitmq_module
+    import sandbox_api.main as main
+    import sandbox_api.sandboxes.storage as storage
 
     async def _noop(*_args, **_kwargs) -> None:
         return None
@@ -78,6 +88,26 @@ def client(tmp_path):
 
     with TestClient(main.app) as test_client:
         yield test_client
+
+
+@pytest.fixture()
+def client(_sandbox_app):
+    """Function-scoped client with a clean DB + artifacts dir per test."""
+    import sandbox_api.artifacts as artifacts
+    import sandbox_api.sandboxes.storage as storage
+    from sandbox_api.core.database import engine
+
+    with Session(engine) as session:
+        session.exec(delete(artifacts.ArtifactLinkRow))
+        session.exec(delete(artifacts.ArtifactRow))
+        session.exec(delete(storage.SandboxRow))
+        session.commit()
+
+    root = artifacts.store.root
+    if root.exists():
+        shutil.rmtree(root)
+    root.mkdir(parents=True, exist_ok=True)
+    return _sandbox_app
 
 
 @pytest.fixture()

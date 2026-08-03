@@ -3,8 +3,11 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import os
 import pytest
 from sqlmodel import SQLModel
+
+os.environ.setdefault("SANDBOX_STEP_RETRIES", "2")
 
 from sandbox_api.platform.artifacts import ArtifactRecord, ArtifactRepository, ArtifactStore
 from sandbox_api.sandboxes.command_models import AgentStepsRequest, Step, StepsRequest
@@ -308,7 +311,7 @@ def test_build_locators_and_perform_actions(monkeypatch):
     worker._perform_locator_action(page, step, "wait_for_selector")
 
     with pytest.raises(RuntimeError):
-        worker._perform_locator_action(page, Step(action="click"), "click")
+        worker._perform_locator_action(page, Step(action="click", selector="#missing"), "click")
 
     with pytest.raises(RuntimeError):
         worker._perform_locator_action(page, Step(action="click", selector="#id"), "unknown")

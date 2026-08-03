@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, HttpUrl, root_validator
+from pydantic import ConfigDict, BaseModel, Field, HttpUrl, root_validator
 
 
 class DrawPoint(BaseModel):
@@ -14,6 +14,7 @@ class RunBrowserRequest(BaseModel):
     url: HttpUrl
     interactive: bool = False
     profile_artifact_id: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 class RecordRequest(BaseModel):
@@ -21,6 +22,7 @@ class RecordRequest(BaseModel):
     duration: int = 30
     interactive: bool = False
     profile_artifact_id: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 class ReplayRequest(BaseModel):
@@ -70,7 +72,7 @@ class Step(BaseModel):
     snapshot_format: Optional[Literal["html", "a11y_json"]] = Field(default=None, alias="format")
 
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True
 
     @root_validator(skip_on_failure=True)
     def validate_fields(cls, values: dict) -> dict:
@@ -128,6 +130,7 @@ class StepsRequest(BaseModel):
     steps: List[Step]
     screenshot_every_step: bool = False
     profile_artifact_id: Optional[str] = None
+    session_id: Optional[str] = None
 
     @root_validator(skip_on_failure=True)
     def validate_steps(cls, values: dict) -> dict:
@@ -150,6 +153,7 @@ class AgentStepsRequest(BaseModel):
     capture_state: bool = True
     max_steps: int = 24
     profile_artifact_id: Optional[str] = None
+    session_id: Optional[str] = None
     llm: Optional[AgentLlmConfig] = None
 
     @root_validator(skip_on_failure=True)

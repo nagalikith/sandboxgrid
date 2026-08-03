@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, Field
+from pydantic import ConfigDict, BaseModel, Field
 
 from .artifacts import ArtifactRecord, repository as artifact_repo, store as artifact_store
 from .core.internal_auth import internal_auth_dependency
@@ -46,7 +46,7 @@ class ShareCookie(BaseModel):
     expiration_date: Optional[float] = Field(default=None, alias="expirationDate")
 
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True
 
 
 class StorageItem(BaseModel):
@@ -64,7 +64,7 @@ class ShareSessionRequest(BaseModel):
     user_agent: Optional[str] = Field(default=None, alias="userAgent")
 
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True
 
 
 class ShareSessionResponse(BaseModel):

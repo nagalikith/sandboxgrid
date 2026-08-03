@@ -24,7 +24,7 @@ class JobBase(BaseModel):
 
 
 class ProvisionJob(JobBase):
-    type: Literal["provision"]
+    type: Literal["provision"] = "provision"
     sandbox_id: str
     owner_id: str
     request: SandboxRequest
@@ -41,7 +41,7 @@ CommandPayload = Union[
 
 
 class CommandJob(JobBase):
-    type: Literal["command"]
+    type: Literal["command"] = "command"
     sandbox_id: str
     owner_id: str
     command_id: str
@@ -70,7 +70,7 @@ class CommandJob(JobBase):
 
 
 class DashboardUpdateJob(JobBase):
-    type: Literal["dashboard_update"]
+    type: Literal["dashboard_update"] = "dashboard_update"
     sandbox_id: str
     owner_id: str
     payload: DashboardPayload

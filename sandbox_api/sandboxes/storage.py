@@ -85,9 +85,20 @@ class SandboxRepository:
     def __init__(self, engine) -> None:
         self.engine = engine
 
+    @staticmethod
+    def _url(value) -> Optional[str]:
+        """AnyUrl -> str for sqlite binding; None stays None."""
+        if value is None:
+            return None
+        return str(value)
+
     def create(self, record: SandboxRecord) -> SandboxRecord:
         with Session(self.engine) as session:
             row = SandboxRow.from_record(record)
+            row.browser_url = self._url(row.browser_url)
+            row.dashboard_url = self._url(row.dashboard_url)
+            row.events_url = self._url(row.events_url)
+            row.cdp_url = self._url(row.cdp_url)
             session.add(row)
             session.commit()
             session.refresh(row)
@@ -125,7 +136,7 @@ class SandboxRepository:
             row.http_port = http_port or row.http_port
             row.cdp_port = cdp_port or row.cdp_port
             row.artifacts_path = artifacts_path or row.artifacts_path
-            row.cdp_url = cdp_url or row.cdp_url
+            row.cdp_url = self._url(cdp_url or row.cdp_url)
             session.add(row)
             session.commit()
             session.refresh(row)

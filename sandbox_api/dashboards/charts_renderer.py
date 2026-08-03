@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Optional
 from uuid import uuid4
 
-from ..artifacts import ArtifactRecord, ArtifactRepository
+from ..artifacts import ArtifactRecord, ArtifactRepository, register_artifact_file
 from .models import DashboardChart, DashboardPayload
 from ..sandboxes.models import SandboxRecord
 from datetime import datetime, timezone
@@ -105,7 +105,7 @@ def build_echarts_option(chart: DashboardChart, *, variant: str) -> tuple[dict[s
 
 
 def _register_chart_artifact(
-    repository: ArtifactRepository,
+    repository,
     *,
     owner_id: str,
     sandbox_id: str,
@@ -116,43 +116,28 @@ def _register_chart_artifact(
     artifact_type: str,
     artifact_format: str,
     mime_type: str,
+    session_id: str | None = None,
+    emit_event=None,
 ) -> ArtifactRecord:
-    now = datetime.now(timezone.utc)
-    record = ArtifactRecord(
-        artifact_id=f"art_{uuid4().hex[:12]}",
+    """Register a rendered chart via the shared helper (canonical events)."""
+    return register_artifact_file(
+        repository,
         owner_id=owner_id,
-        session_id=None,
         sandbox_id=sandbox_id,
-        artifact_type=artifact_type,
-        source="dashboard",
+        session_id=session_id,
         run_id=run_id,
-        volatility=None,
-        artifact_format=artifact_format,
-        created_at=now,
-        updated_at=now,
-        size_bytes=None,
-        mime_type=mime_type,
+        command_id=run_id,
+        file_path=file_path,
         filename=filename,
-        checksum_sha256=None,
-        tags=tags,
-        sensitivity=None,
-        attributes=None,
-        blob_path=None,
-    )
-    created = repository.create(record)
-    size_bytes = file_path.stat().st_size
-    hasher = hashlib.sha256()
-    with file_path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(8192), b""):
-            hasher.update(chunk)
-    updated = repository.update_blob(
-        created.artifact_id,
-        blob_path=str(file_path.resolve()),
-        size_bytes=size_bytes,
-        checksum_sha256=hasher.hexdigest(),
+        artifact_format=artifact_format,
         mime_type=mime_type,
+        artifact_type=artifact_type,
+        tags=tags,
+        source="dashboard",
+        sensitivity="internal",
+        volatility="stable",
+        emit_event=emit_event,
     )
-    return updated or created
 
 
 def _render_with_docker(work_dir: Path, *, input_path: Path) -> None:
@@ -298,6 +283,9 @@ def render_dashboard_charts(
             mime_type = "image/png"
             artifact_type = "chart"
 
+        tags = ["dashboard", "chart", variant]
+        if idx == 0:
+            tags = tags + ["key"]
         artifact = _register_chart_artifact(
             artifact_repo,
             owner_id=record.owner_id,
@@ -305,23 +293,13 @@ def render_dashboard_charts(
             run_id=run_id,
             file_path=output_path,
             filename=output_name,
-            tags=["dashboard", "chart", variant],
+            tags=tags,
             artifact_type=artifact_type,
             artifact_format=artifact_format,
             mime_type=mime_type,
+            emit_event=emit_event,
         )
-        artifact_ids.append(artifact.artifact_id)
-        emit_event(
-            {
-                "type": "artifact_ready",
-                "artifact_id": artifact.artifact_id,
-                "sandbox_id": record.sandbox_id,
-                "run_id": run_id,
-                "filename": output_name,
-                "artifact_type": artifact.artifact_type,
-                "artifact_format": artifact.artifact_format,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
-        )
+        if artifact:
+            artifact_ids.append(artifact.artifact_id)
 
     return artifact_ids
