@@ -311,10 +311,12 @@ def test_build_locators_and_perform_actions(monkeypatch):
     worker._perform_locator_action(page, step, "wait_for_selector")
 
     with pytest.raises(RuntimeError):
-        worker._perform_locator_action(page, Step(action="click", selector="#missing"), "click")
+        worker._perform_locator_action(
+            DummyPage(fail_role=True), Step(action="click", selector="#missing"), "click"
+        )
 
     with pytest.raises(RuntimeError):
-        worker._perform_locator_action(page, Step(action="click", selector="#id"), "unknown")
+        worker._perform_locator_action(DummyPage(), Step(action="click", selector="#id"), "unknown")
 
 
 def test_perform_locator_action_uses_frame_scope():
@@ -446,7 +448,7 @@ def test_run_steps_and_agent_and_profile(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_publish_event_and_enforce_ttl(monkeypatch, tmp_path):
     repo = SandboxRepository(engine)
-    record = repo.create(_record(tmp_path))
+    record = repo.create(_record(tmp_path, sandbox_id="sbx_ttl"))
     rabbit = FakeRabbit()
 
     async def fake_sleep(_delay):
@@ -534,7 +536,7 @@ async def test_handle_dashboard_update(monkeypatch, tmp_path):
     artifact_repo = ArtifactRepository(engine)
     rabbit = FakeRabbit()
 
-    record = repo.create(_record(tmp_path))
+    record = repo.create(_record(tmp_path, sandbox_id="sbx_dash"))
     job = DashboardUpdateJob(
         sandbox_id=record.sandbox_id,
         owner_id="user_a",
