@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from sqlmodel import create_engine
 
 import sandbox_api.core.database as database
