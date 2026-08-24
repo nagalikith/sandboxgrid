@@ -75,12 +75,17 @@ class SandboxOrchestrator:
 
     async def _enforce_ttl(self, record: SandboxRecord) -> None:
         now = datetime.now(timezone.utc)
-        delay = max((record.expires_at - now).total_seconds(), 0)
+        expires_at = record.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        delay = max((expires_at - now).total_seconds(), 0)
         await asyncio.sleep(delay)
         latest = self._repository.get(record.sandbox_id)
         if not latest or latest.status == SandboxStatus.terminated:
             return
         try:
             await self._provisioner.stop(latest.sandbox_id, latest.backend_ref)
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed to stop sandbox %s", latest.sandbox_id)
         finally:
             self._repository.set_terminated(latest.sandbox_id, message="Sandbox expired.")
