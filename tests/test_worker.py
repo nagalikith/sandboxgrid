@@ -535,8 +535,8 @@ async def test_handle_provision_and_command_and_job(monkeypatch, tmp_path):
 
             return Dummy()
 
-    message = DummyMessage(json.dumps(job.dict()).encode("utf-8"))
-    await worker.handle_job(message, repo, artifact_repo, artifact_store, FakeProvisioner(), rabbit)
+    message = DummyMessage(json.dumps(job.model_dump()).encode("utf-8"))
+    await worker.handle_message(message, repo, artifact_repo, artifact_store, FakeProvisioner(), rabbit)
 
 
 @pytest.mark.asyncio
