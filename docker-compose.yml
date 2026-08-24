@@ -1,0 +1,50 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: sandboxgrid_rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    container_name: sandboxgrid_api
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: sqlite:////data/sandbox.db
+      SANDBOX_ARTIFACTS_ROOT: /artifacts
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-change-me}
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      API_BASE_URL: http://localhost:8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - api_data:/data
+      - api_artifacts:/artifacts
+
+  worker:
+    build: .
+    container_name: sandboxgrid_worker
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: sqlite:////data/sandbox.db
+      SANDBOX_ARTIFACTS_ROOT: /artifacts
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:-change-me}
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    command: ["python", "-m", "sandbox_api.worker"]
+    volumes:
+      - api_data:/data
+      - api_artifacts:/artifacts
+
+volumes:
+  api_data:
+  api_artifacts:
