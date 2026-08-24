@@ -14,6 +14,7 @@ from sandbox_api.sandboxes.command_models import AgentStepsRequest, Step, StepsR
 from sandbox_api.core.database import engine
 from sandbox_api.core.jobs import CommandJob, DashboardUpdateJob, ProvisionJob
 from sandbox_api.sandboxes.models import SandboxRecord, SandboxRequest, SandboxStatus
+from sandbox_api.sandboxes.provisioner import ProvisionResult
 from sandbox_api.sandboxes.storage import SandboxRepository
 from sandbox_api.platform import worker
 
@@ -104,6 +105,14 @@ class DummyPage:
         self._title = "Example"
 
     def locator(self, selector):
+        if "missing" in selector:
+            missing = DummyLocator()
+
+            def never_appears(**_kwargs):
+                raise RuntimeError("no such element")
+
+            missing.wait_for = never_appears
+            return missing
         return self._locator_map.get(selector, self._locator)
 
     def get_by_role(self, _role, name=None):
@@ -182,7 +191,7 @@ class FakeRabbit:
 
 class FakeProvisioner:
     async def provision(self, sandbox_id, request, *, owner_id):
-        return worker.ProvisionResult(
+        return ProvisionResult(
             status=SandboxStatus.ready,
             browser_url="http://browser",
             dashboard_url="http://dash",
