@@ -87,7 +87,7 @@ async def test_orchestrator_enforce_ttl(monkeypatch):
     provisioner = FakeProvisioner(should_fail=True)
     orchestrator = SandboxOrchestrator(repository=repo, provisioner=provisioner)
 
-    record = await orchestrator.provision(SandboxRequest(ttl_seconds=1), owner_id="user_a")
+    record = await orchestrator.provision(SandboxRequest(ttl_seconds=60), owner_id="user_a")
     record = record.copy(update={"expires_at": datetime.now(timezone.utc)})
     repo.set_status(record.sandbox_id, status=SandboxStatus.ready)
 
