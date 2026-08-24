@@ -95,6 +95,8 @@ async def test_chromium_provision_failure(monkeypatch, tmp_path):
     )
 
     async def fake_run(self, *args):
+        if args[0] == "inspect":
+            return 0, "", ""
         assert args[0] == "run"
         return 1, "", "boom"
 
