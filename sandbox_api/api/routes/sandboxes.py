@@ -84,7 +84,7 @@ async def sandbox_events(
     queue, backlog = event_bus.subscribe(sandbox_id, last_sequence=last_sequence)
 
     async def event_stream():
-        emitted = 0
+        emitted = 1  # the connected frame counts toward max_events
         try:
             yield sse_format(
                 {"type": "connected", "sandbox_id": sandbox_id, "timestamp": datetime.now(timezone.utc).isoformat()}
@@ -93,7 +93,7 @@ async def sandbox_events(
                 for event in backlog:
                     yield sse_format(event)
                     emitted += 1
-                    if max_events is not None and emitted >= max_events:
+                    if max_events is not None and emitted > max_events:
                         return
             while True:
                 if max_events is not None and emitted >= max_events:
