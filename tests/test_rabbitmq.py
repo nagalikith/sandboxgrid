@@ -61,7 +61,7 @@ async def test_rabbitmq_connect_publish_and_close(monkeypatch):
     async def fake_connect(_url):
         return dummy_connection
 
-    monkeypatch.setattr("sandbox_api.rabbitmq.aio_pika.connect_robust", fake_connect)
+    monkeypatch.setattr("sandbox_api.core.rabbitmq.aio_pika.connect_robust", fake_connect)
 
     rabbit = RabbitMQ(url="amqp://test", queue_name="jobs", events_exchange="events", prefetch=2)
     await rabbit.connect()
