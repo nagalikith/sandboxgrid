@@ -1224,7 +1224,10 @@ async def enforce_ttl(
     if not record:
         return
     now = datetime.now(timezone.utc)
-    delay = max((record.expires_at - now).total_seconds(), 0)
+    expires_at = record.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    delay = max((expires_at - now).total_seconds(), 0)
     await asyncio.sleep(delay)
     latest = repository.get(sandbox_id)
     if not latest or latest.status == SandboxStatus.terminated:
