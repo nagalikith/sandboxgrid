@@ -54,7 +54,7 @@ class RabbitMQ:
 
     async def publish_job(self, job: JobBase) -> None:
         await self.connect()
-        body = job.json(exclude_none=True, ensure_ascii=True).encode("utf-8")
+        body = job.model_dump_json(exclude_none=True).encode("utf-8")
         message = aio_pika.Message(body=body, delivery_mode=aio_pika.DeliveryMode.PERSISTENT)
         assert self._channel is not None
         await self._channel.default_exchange.publish(message, routing_key=self.queue_name)
