@@ -54,7 +54,7 @@ def test_plan_steps_uses_llm_response(monkeypatch):
         assert timeout
         return payload
 
-    monkeypatch.setattr("sandbox_api.agent_planner._call_openai", fake_call)
+    monkeypatch.setattr("sandbox_api.sandboxes.agent_planner._call_openai", fake_call)
     request = AgentStepsRequest(task="Do", steps=None)
     result = plan_steps(request=request, page_context={}, log=lambda _msg: None)
     assert result.screenshot_every_step
@@ -67,7 +67,7 @@ def test_plan_steps_fallback_on_error(monkeypatch):
     def fake_call(_payload, timeout):
         return {"choices": [{"message": {"content": "bad json"}}]}
 
-    monkeypatch.setattr("sandbox_api.agent_planner._call_openai", fake_call)
+    monkeypatch.setattr("sandbox_api.sandboxes.agent_planner._call_openai", fake_call)
     request = AgentStepsRequest(task="Do", steps=[Step(action="page_state")])
     result = plan_steps(request=request, page_context={}, log=lambda _msg: None)
     assert len(result.steps) == 1
