@@ -17,7 +17,8 @@ POST /sandboxes ──► Provisioner ──► browser_url + cdp_url + dashboar
 
 ## Features
 
-- **Pluggable provisioners** — run sandboxes as local processes (`local`), Docker containers with noVNC + CDP (`docker`), or any backend implementing the `Provisioner` protocol.
+- **Pluggable provisioners** — run sandboxes as local processes (`local`), Docker containers with noVNC + CDP (`docker`), or **Browserbase cloud browsers** (`browserbase`) — one env var to switch.
+- **Browserbase integration** — sessions map onto the Browserbase Sessions API (live view, CDP connect URL, contexts, recordings). Runs offline via a built-in mock client when no API key is set.
 - **Live view + human-in-the-loop** — every sandbox exposes a watchable, controllable browser surface.
 - **Artifact pipeline** — screenshots, step logs, and session recordings are captured, stored per-owner, versioned, and derivable (artifact lineage links).
 - **Internal HMAC auth** — timestamped, signed requests between services; no bearer tokens on the wire.
@@ -58,7 +59,9 @@ docker-compose up -d          # api + worker + rabbitmq
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `DATABASE_URL` | `sqlite:///./sandbox.db` | Any SQLAlchemy URL |
-| `SANDBOX_PROVISIONER` | `local` | `local` \| `docker` |
+| `SANDBOX_PROVISIONER` | `local` | `local` \| `docker` \| `browserbase` |
+| `BROWSERBASE_API_KEY` | — | Browserbase API key (offline mock without it) |
+| `BROWSERBASE_PROJECT_ID` | — | Browserbase project id |
 | `SANDBOX_ARTIFACTS_ROOT` | `./artifacts` | Artifact storage root |
 | `INTERNAL_AUTH_SECRET` | — | HMAC secret for internal routes |
 | `RABBITMQ_URL` | `amqp://guest:guest@localhost/` | Job queue broker |
