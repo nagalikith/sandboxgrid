@@ -57,7 +57,7 @@ def create_app() -> FastAPI:
                 payload = json.loads(message.body.decode("utf-8"))
                 sandbox_id = payload.get("sandbox_id")
                 if sandbox_id:
-                    await event_bus.publish(sandbox_id, payload)
+                    event_bus.publish(sandbox_id, payload)
 
         try:
             timeout = _rabbitmq_connect_timeout_seconds()

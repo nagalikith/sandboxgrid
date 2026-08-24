@@ -5,6 +5,7 @@ from collections import deque
 from datetime import datetime, timezone
 import json
 import os
+import threading
 from typing import Any, Deque, Dict, List, Set
 
 
@@ -22,11 +23,11 @@ class EventBus:
         self._queues: Dict[str, Set[asyncio.Queue]] = {}
         self._buffers: Dict[str, Deque[Dict[str, Any]]] = {}
         self._sequences: Dict[str, int] = {}
-        self._lock = asyncio.Lock()
+        self._lock = threading.Lock()
         self._buffer_size = max(buffer_size, 0)
 
-    async def publish(self, sandbox_id: str, event: Dict[str, Any]) -> None:
-        async with self._lock:
+    def publish(self, sandbox_id: str, event: Dict[str, Any]) -> None:
+        with self._lock:
             event_with_sequence = dict(event)
             sequence = event_with_sequence.get("sequence")
             if sequence is None:
@@ -51,14 +52,14 @@ class EventBus:
                 # Drop event if subscriber is too slow; SSE client can reconnect.
                 pass
 
-    async def subscribe(
+    def subscribe(
         self,
         sandbox_id: str,
         *,
         last_sequence: int | None = None,
     ) -> tuple[asyncio.Queue, List[Dict[str, Any]]]:
         queue: asyncio.Queue = asyncio.Queue(maxsize=100)
-        async with self._lock:
+        with self._lock:
             backlog: List[Dict[str, Any]] = []
             if last_sequence is not None:
                 buffer = self._buffers.get(sandbox_id)
@@ -67,8 +68,8 @@ class EventBus:
             self._queues.setdefault(sandbox_id, set()).add(queue)
         return queue, backlog
 
-    async def unsubscribe(self, sandbox_id: str, queue: asyncio.Queue) -> None:
-        async with self._lock:
+    def unsubscribe(self, sandbox_id: str, queue: asyncio.Queue) -> None:
+        with self._lock:
             subscribers = self._queues.get(sandbox_id)
             if not subscribers:
                 return

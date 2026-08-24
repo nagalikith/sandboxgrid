@@ -81,7 +81,7 @@ async def sandbox_events(
             last_sequence = int(last_event_id)
         except ValueError:
             last_sequence = None
-    queue, backlog = await event_bus.subscribe(sandbox_id, last_sequence=last_sequence)
+    queue, backlog = event_bus.subscribe(sandbox_id, last_sequence=last_sequence)
 
     async def event_stream():
         emitted = 0
@@ -107,7 +107,7 @@ async def sandbox_events(
                 except asyncio.TimeoutError:
                     yield ":\n\n"
         finally:
-            await event_bus.unsubscribe(sandbox_id, queue)
+            event_bus.unsubscribe(sandbox_id, queue)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
