@@ -120,11 +120,104 @@ class LocalProvisioner:
         return "127.0.0.1"
 
 
+class BrowserbaseProvisioner:
+    """Provisions sandboxes as Browserbase cloud-browser sessions.
+
+    Maps the platform lifecycle onto Browserbase's Sessions API:
+    provision -> create_session, browser_url -> live view,
+    cdp_url -> websocket connect endpoint, backend_ref -> session id.
+    """
+
+    def __init__(
+        self,
+        *,
+        client,
+        api_base_url: str = "http://localhost:8000",
+        artifacts_root: Optional[Path] = None,
+        artifacts_mode: str = "per-user",
+    ) -> None:
+        self._client = client
+        self._api_base_url = api_base_url.rstrip("/")
+        self._artifacts_root = artifacts_root
+        self._artifacts_mode = normalize_artifacts_mode(artifacts_mode)
+
+    @classmethod
+    def from_env(cls) -> "BrowserbaseProvisioner":
+        from .browserbase import client_from_env
+
+        return cls(
+            client=client_from_env(),
+            api_base_url=os.getenv("API_BASE_URL", "http://localhost:8000"),
+            artifacts_root=Path(os.getenv("SANDBOX_ARTIFACTS_ROOT", "./artifacts")),
+            artifacts_mode=os.getenv("SANDBOX_ARTIFACTS_MODE", "per-user"),
+        )
+
+    async def provision(self, sandbox_id: str, request: SandboxRequest, *, owner_id: str) -> ProvisionResult:
+        logger.info(
+            "provision_browserbase start sandbox_id=%s owner_id=%s capabilities=%s",
+            sandbox_id,
+            owner_id,
+            request.capabilities,
+        )
+        session = await self._client.create_session(timeout_seconds=request.ttl_seconds)
+        cdp_url: Optional[str] = session.connect_url if "browser" in request.capabilities else None
+        browser_url: Optional[str] = None
+        if "browser" in request.capabilities:
+            live_view = await self._client.get_live_view(session.id)
+            browser_url = live_view.url or None
+        dashboard_url = f"{self._api_base_url}/sandboxes/{sandbox_id}/dashboard"
+        events_url = f"{self._api_base_url}/sandboxes/{sandbox_id}/events"
+        if "dashboard" not in request.capabilities:
+            dashboard_url = None
+        artifacts_path = None
+        if self._artifacts_root:
+            resolved = resolve_artifacts_path(
+                self._artifacts_root,
+                sandbox_id=sandbox_id,
+                owner_id=owner_id,
+                mode=self._artifacts_mode,
+            )
+            resolved.mkdir(parents=True, exist_ok=True)
+            artifacts_path = str(resolved.resolve())
+        logger.info(
+            "provision_browserbase done sandbox_id=%s session=%s",
+            sandbox_id,
+            session.id,
+        )
+        return ProvisionResult(
+            status=SandboxStatus.ready,
+            browser_url=browser_url,
+            dashboard_url=dashboard_url,
+            events_url=events_url,
+            message="Sandbox ready.",
+            backend_ref=session.id,
+            artifacts_path=artifacts_path,
+            cdp_url=cdp_url,
+        )
+
+    async def stop(self, sandbox_id: str, backend_ref: Optional[str]) -> None:
+        if not backend_ref:
+            return
+        await self._client.release_session(backend_ref)
+
+    def cdp_host(self) -> str:
+        return "connect.browserbase.com"
+
+
 def build_default_provisioner() -> Provisioner:
     mode = os.getenv("SANDBOX_PROVISIONER", "local").lower()
     logger.info("provisioner_select mode=%s", mode)
     if mode == "docker":
         return ChromiumContainerProvisioner.from_env()
+    if mode == "browserbase":
+        from .browserbase import client_from_env
+
+        return BrowserbaseProvisioner(
+            client=client_from_env(),
+            api_base_url=os.getenv("API_BASE_URL", "http://localhost:8000"),
+            artifacts_root=Path(os.getenv("SANDBOX_ARTIFACTS_ROOT", "./artifacts")),
+            artifacts_mode=os.getenv("SANDBOX_ARTIFACTS_MODE", "per-user"),
+        )
     sandbox_base = os.getenv("SANDBOX_PUBLIC_BASE", "http://localhost:8080")
     api_base = os.getenv("API_BASE_URL", "http://localhost:8000")
     provision_delay_seconds = float(os.getenv("SANDBOX_PROVISION_DELAY_SECONDS", "0"))
