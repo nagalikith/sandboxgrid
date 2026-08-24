@@ -51,7 +51,7 @@ def test_storage_lifecycle():
     )
     assert ready
     assert ready.status == SandboxStatus.ready
-    assert ready.events_url == "http://events"
+    assert str(ready.events_url).rstrip("/") == "http://events"
 
     updated = repo.set_status("sbx_test", status=SandboxStatus.provisioning, message="booting")
     assert updated
