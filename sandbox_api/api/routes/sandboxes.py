@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 
 from ...core.events import event_bus, sse_format
@@ -66,6 +66,7 @@ async def get_sandbox(
 async def sandbox_events(
     sandbox_id: str,
     request: Request,
+    max_events: int | None = Query(default=None, ge=1),
     agent_id: str = Depends(require_internal_auth),
 ) -> StreamingResponse:
     record = await orchestrator.get(sandbox_id)
@@ -83,6 +84,7 @@ async def sandbox_events(
     queue, backlog = await event_bus.subscribe(sandbox_id, last_sequence=last_sequence)
 
     async def event_stream():
+        emitted = 0
         try:
             yield sse_format(
                 {"type": "connected", "sandbox_id": sandbox_id, "timestamp": datetime.now(timezone.utc).isoformat()}
@@ -90,12 +92,18 @@ async def sandbox_events(
             if backlog:
                 for event in backlog:
                     yield sse_format(event)
+                    emitted += 1
+                    if max_events is not None and emitted >= max_events:
+                        return
             while True:
+                if max_events is not None and emitted >= max_events:
+                    return
                 if await request.is_disconnected():
                     break
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=15.0)
                     yield sse_format(event)
+                    emitted += 1
                 except asyncio.TimeoutError:
                     yield ":\n\n"
         finally:

@@ -4,9 +4,11 @@ from sandbox_api import main
 from tests.auth_helpers import build_internal_headers
 
 
-def _headers(method: str, path: str, body: bytes = b"", user_id: str = "user_a"):
+def _headers(method: str, path: str, body: bytes = b"", user_id: str = "user_a", params=None):
     content_type = "application/json" if body else None
-    return build_internal_headers(method, path, body=body, user_id=user_id, content_type=content_type)
+    return build_internal_headers(
+        method, path, body=body, user_id=user_id, content_type=content_type, params=params
+    )
 
 
 def test_ui_routes(client):
@@ -69,10 +71,13 @@ def test_sandbox_events_stream(client):
     response = client.post("/sandboxes", data=body, headers=_headers("POST", "/sandboxes", body))
     sandbox_id = response.json()["sandbox_id"]
 
-    headers = _headers("GET", f"/sandboxes/{sandbox_id}/events")
-    with client.stream("GET", f"/sandboxes/{sandbox_id}/events", headers=headers) as response:
+    path = f"/sandboxes/{sandbox_id}/events"
+    params = {"max_events": 1}
+    headers = _headers("GET", path, params=params)
+    with client.stream("GET", f"{path}?max_events=1", headers=headers) as response:
         assert response.status_code == 200
-        line = next(response.iter_lines())
-        if isinstance(line, bytes):
-            line = line.decode("utf-8")
-        assert "connected" in line
+        lines = [
+            chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk
+            for chunk in response.iter_lines()
+        ]
+    assert any("connected" in line for line in lines)
