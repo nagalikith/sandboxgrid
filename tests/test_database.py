@@ -17,11 +17,14 @@ def test_init_db_without_alembic(monkeypatch, tmp_path):
 
 
 def test_init_db_with_alembic_stamp(monkeypatch, tmp_path):
+    pytest.importorskip("alembic")
     db_path = tmp_path / "test.db"
     test_engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
     monkeypatch.setattr(database, "DATABASE_URL", f"sqlite:///{db_path}")
     monkeypatch.setattr(database, "engine", test_engine)
-    monkeypatch.setattr(database, "ALEMBIC_INI", Path("/home/snaga/cua-lab/alembic.ini"))
+    alembic_ini = tmp_path / "alembic.ini"
+    alembic_ini.write_text("[alembic]\n")
+    monkeypatch.setattr(database, "ALEMBIC_INI", alembic_ini)
 
     calls = {"stamp": 0, "upgrade": 0}
 
