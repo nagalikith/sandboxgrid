@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import uuid4
@@ -8,6 +9,8 @@ from uuid import uuid4
 from .models import SandboxRecord, SandboxRequest, SandboxStatus
 from .provisioner import ProvisionResult, Provisioner, build_default_provisioner
 from .storage import SandboxRepository
+
+logger = logging.getLogger("sandbox.orchestrator")
 
 
 class SandboxOrchestrator:
