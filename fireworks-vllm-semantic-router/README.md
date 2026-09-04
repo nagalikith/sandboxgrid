@@ -1,133 +1,149 @@
-# Fireworks + vLLM Semantic Router (coding-agent demo)
+# Fireworks coding-agent router
 
-Local [vLLM Semantic Router](https://github.com/vllm-project/semantic-router) (`vllm-sr` 0.3) in front of current Fireworks serverless coding models.
+A local sidecar in front of [Fireworks](https://fireworks.ai) serverless. Coding-agent clients send one request; the router decides whether that request stays on this machine, needs a 1M-context model, or should stay on the coding default so a warm prefix keeps cached input.
 
-This README is the demo. There is no credits-ask and no savings percentage.
+This is a working demo for B2B teams that already run agents against Fireworks and want the routing policy explained with numbers — not a savings pitch and not a new model vendor.
 
-## Policy
+Built on [vLLM Semantic Router](https://github.com/vllm-project/semantic-router) 0.3. Models are current Fireworks Standard serverless (as of 2026-09-03).
+
+---
+
+## The problem this is for
+
+A coding agent (IDE sidecar, internal copilot, support-engineering bot) typically talks to **one** model ID. That is simple, and it is expensive in the wrong places:
+
+1. **Secrets leave the building.** An API key or private key pasted into chat goes straight to the provider.
+2. **Context overflows.** Kimi K2.7 Code has a 262K window. A long repo dump plus thinking plus `max_tokens` does not fit. The request should move to GLM 5.2 (1M), not fail mid-turn.
+3. **Hopping models busts cache.** Fireworks cached input on Kimi is **$0.19 / 1M** versus **$0.95 / 1M** uncached. Switching to a cheaper model for a “small” follow-up throws away the prefix you already paid to fill.
+
+Fireworks already sells Standard / Priority / Fast serving paths. This project does not reimplement Fast or Priority. It sits **in front** of Standard models and chooses *which* model (or refuse) from the shape of the request.
+
+---
+
+## What the router does
 
 ```mermaid
 flowchart TD
-  req[Request] --> secret{secret heuristic?}
-  secret -->|yes| refuse[local refuse]
-  secret -->|no| budget{prompt plus thinking budget over 262K?}
-  budget -->|yes| glm[GLM 5.2 1M]
-  budget -->|no| prefix{same hot prefix as last turn?}
-  prefix -->|yes| stay[stay on current model]
-  prefix -->|no| kimi[Kimi K2.7 Code]
+  client[Coding-agent client] --> sidecar[Local router]
+  sidecar --> secret{Looks like a leaked secret?}
+  secret -->|yes| refuse[Refuse on this machine<br/>body never reaches Fireworks]
+  secret -->|no| budget{Prompt + thinking + output<br/>no longer fits 262K?}
+  budget -->|yes| glm[GLM 5.2 · 1M context]
+  budget -->|no| prefix{Same hot prefix as last turn?}
+  prefix -->|yes| stay[Stay on the current model]
+  prefix -->|no| kimi[Kimi K2.7 Code · default]
 ```
 
-| If | Then | Why |
+| Situation | Action | Why |
 |---|---|---|
-| Secret-shaped prompt | Local refuse | Never send the body to Fireworks |
-| Prompt + reserved thinking/output ≳ 262K | GLM 5.2 | Kimi window is 262K; GLM is 1M |
-| Same hot prefix as last turn | Stay | Cached input is $0.19 vs $0.95 on Kimi |
-| Anything else | Kimi K2.7 Code | Coding-agent default |
+| Prompt looks like an API key or private key | **Refuse locally** | The body never goes to Fireworks |
+| Prompt + reserved thinking/output ≳ 262K | **GLM 5.2** | Only model in the pool with a 1M window |
+| Follow-up on the same hot prefix | **Stay** | Cached input on Kimi is $0.19 vs $0.95 |
+| Everything else | **Kimi K2.7 Code** | Coding-agent default; thinking is on |
 
-Complexity cost bands (`trivial_edit` / `moderate_change` / `complex_reasoning`) are deleted. The seeded histogram (`fixtures/traces/`, **synthetic-shape**, not a Claude Code dump) is tool and multi-turn agent traffic. MiniMax is in the catalog for smoke and counterfactual pricing only. Re-add it as a route only if live traces show real no-tool, short, non-critical turns **and** a quality check does not fail.
+We do **not** route “easy” one-liners to MiniMax. Agent traffic is tools, multi-turn, and tool loops — not short no-tool edits. MiniMax M3 stays in the catalog so we can price a counterfactual and run smoke tests. It is not a production route unless live traces later show real short, non-critical, no-tool turns *and* quality holds.
 
-Fireworks already ships Standard / Priority / Fast serving paths (for example `accounts/fireworks/routers/glm-5p2-fast`). This demo does not reimplement them. Do not pretend Fast is a cheaper mid-tier.
+Clients send `"model": "MoM"` to enter this policy. Pinning a Fireworks model ID (`accounts/fireworks/models/kimi-k2p7-code`, and so on) is pass-through: no refuse, no budget cutover, no stay logic. That is intentional — an operator can pin when they want a raw model.
 
-## Prices (official Standard, 2026-09-03)
+K2.7 thinking is on by default. The next turn must keep `reasoning_content` (or Fireworks’ equivalent) on the previous assistant message, or both quality and prefix cache break. See [Fireworks reasoning](https://docs.fireworks.ai/guides/reasoning).
 
-From [Fireworks serverless pricing](https://docs.fireworks.ai/serverless/pricing). Cells are **input / cached input / output** per 1M tokens.
+---
+
+## Models and official prices
+
+Standard list from [Fireworks serverless pricing](https://docs.fireworks.ai/serverless/pricing), **2026-09-03**. Cells are **input / cached input / output** per 1M tokens.
 
 | Role | Model | Input / cached / output | Context |
 |---|---|---|---|
-| catalog / smoke | `accounts/fireworks/models/minimax-m3` | $0.30 / $0.06 / $1.20 | 512K |
-| default / stay | `accounts/fireworks/models/kimi-k2p7-code` | $0.95 / $0.19 / $4.00 | 262K |
-| over Kimi budget | `accounts/fireworks/models/glm-5p2` | $1.40 / $0.14 / $4.40 | 1M |
+| Default / stay | `accounts/fireworks/models/kimi-k2p7-code` | $0.95 / **$0.19** / $4.00 | 262K |
+| Over Kimi budget | `accounts/fireworks/models/glm-5p2` | $1.40 / $0.14 / $4.40 | 1M |
+| Catalog only (smoke / counterfactual) | `accounts/fireworks/models/minimax-m3` | $0.30 / $0.06 / $1.20 | 512K |
 
-K2.7 Code thinking is on by default. Do not send `chat_template_kwargs.enable_thinking`.
+MiniMax M2.5 and Kimi K2.6 Turbo are deprecated on serverless and are not in this pool.
 
-MiniMax M2.5 and Kimi K2.6 Turbo are deprecated on serverless. Do not put them back.
+The number that matters on agent prefixes is **cached input**. A policy that hops off Kimi to “save” on a short turn pays $0.95 again to refill the prefix.
 
-## What the sidecar is allowed to decide
+---
 
-`"model": "MoM"` enters the recipe (signals, plugins, cache-aware stay). A Fireworks model ID is pass-through: **no** `contain_secrets`, **no** `over_kimi_budget`, **no** `coding_default`, **no** prefix-stay algorithm.
+## What we measured
 
-```
-client
-  │
-  ▼
-listener  ← read `vllm-sr status` for the real bind
-  │           (last box used 18080/inference/v1 for chat, 8080 for eval/replay)
-  ▼
-recipe    ← only if model is MoM
-  │
-  ▼
-https://api.fireworks.ai/inference/v1
-```
+Two different measurements. They are not interchangeable.
 
-`scripts/bypass_check.py` asserts that contract: the same secret-shaped prompt matches `contain_secrets` through eval/`MoM`, and a pinned `accounts/fireworks/models/kimi-k2p7-code` chat does not run the refuse plugin. The pin path never sends the secret body to Fireworks.
+### 1. Routing eval — held-out requests, $0, no Fireworks call
 
-### Preserved thinking
+23 held-out prompts (coding one-liners, agent/tool-loop shapes, a budget-sized long context, and well-known fake secrets) against the live router. The suite asks only: *which decision and model would this request hit?*
 
-K2.7 thinking is on by default. The next turn's `messages` must keep `reasoning_content` (or the provider's equivalent) from the previous assistant message. Dropping it breaks both quality and prefix cache. See [Fireworks reasoning](https://docs.fireworks.ai/guides/reasoning).
+**Mis-routes: 0 / 23.**
 
-## What the numbers are allowed to say
+| Kind | Count | Expected | Got |
+|---|---:|---|---|
+| Coding / agent turns | 18 | Kimi K2.7 Code | Kimi K2.7 Code |
+| Secret-shaped prompts | 4 | Local refuse | Local refuse |
+| Over-budget context | 1 | GLM 5.2 | GLM 5.2 |
 
-| Source | What it proves |
+This is routing correctness, not “the model solved the ticket.” Full table: [docs/eval-results.md](docs/eval-results.md).
+
+Secret cases use well-known fakes (`AKIAIOSFODNN7EXAMPLE`, a marked test Fireworks token, a `BEGIN PRIVATE KEY` block). Live credentials are never used.
+
+### 2. Traffic shape — why the policy looks like this
+
+Three seeded agent turns (tools, multi-turn, tool-loop). **Synthetic request shapes**, not a dump of anyone’s IDE history. Cached tokens were not invented.
+
+| | |
 |---|---|
-| `python3 scripts/eval_suite.py` | Which decision/model a held-out request would hit. Free. Not dollars. Misses are the result — exit 3 is publishable. |
-| `python3 scripts/trace_histogram.py` | Shape of captured turns (prompt tokens, cached fraction, tools, budget vs 262K / 512K / 1M). Seed traces are **synthetic-shape**. |
-| Live chat `usage` | Tokens actually billed, including cached input when the API reports it. |
-| `python3 scripts/price_traces.py` | Same traces priced as always-Kimi / always-GLM / always-MiniMax / routed. Rows with `completion_tokens >= max_tokens` are flagged incomplete. Not a "% cheaper." |
-| `scripts/cost_chart.py` | Token-hold counterfactual on a dump. [`fixtures/replay-sample.json`](fixtures/replay-sample.json) invents cache hits — smoke only. |
+| Turns | 3 |
+| Agent-shaped (tools or multi-turn or tool loop) | **3 / 3** |
+| Short no-tool MiniMax-style edits | **0 / 3** |
+| Budget over Kimi 262K | **0 / 3** |
+| Cached token fraction | **0** (none recorded) |
+| Prompt tokens | min 50 · median 73 · max 85 |
+| Estimated budget (prompt + thinking + max_tokens) | ~8.2K — well inside 262K |
 
-Do not publish a four-shot "% cheaper."
+That is why complexity bands (“easy / mid / hard → cheap / mid / expensive model”) are gone. On this traffic they would hop models and bust cache, and they never saw a short no-tool edit to send to MiniMax.
 
-## Setup
+### 3. Token-hold cost — wiring check, not a bill
+
+Same three seeds priced with official three-part rates. Every counterfactual uses **the same token counts**. Cache is whatever the turn recorded (`0`). Completions are `0`. This proves the price table is wired. It is not what a customer would be billed and it is not “what the other model would have generated.”
+
+| | Always Kimi | Always GLM | Always MiniMax |
+|---|---:|---:|---:|
+| 3 synthetic turns | $0.000198 | $0.000291 | $0.000062 |
+
+There is no routed dollar column yet — seeds were not live completions. There is **no “% cheaper”** and no four-chat savings rate. When a client has 20–50 redacted live turns with real `usage` (including `cached_tokens`), the same table becomes a counterfactual they can stand behind.
+
+---
+
+## How a client uses it
+
+1. Point the coding-agent client at the local router instead of `https://api.fireworks.ai/inference/v1`.
+2. Set `"model": "MoM"` so the policy runs.
+3. Keep Fireworks’ API key on the router host only (`FIREWORKS_API_KEY`). It is not in this repository.
+4. Read `vllm-sr status` for the bind. On the box that signed the eval, chat was `http://127.0.0.1:18080/inference/v1/chat/completions` and management / eval stayed on `8080`.
 
 ```bash
 export FIREWORKS_API_KEY=...          # never commit this
 vllm-sr validate --config config.yaml
-vllm-sr serve --config config.yaml    # needs Docker
-vllm-sr status                        # chat + management ports
+vllm-sr serve --config config.yaml    # Docker
+vllm-sr status                        # real ports
 ```
 
-Scripts default to chat `http://127.0.0.1:18080/inference/v1/chat/completions` and eval/replay on `8080` via `ROUTER_CHAT_URL`, `ROUTER_EVAL_URL`, and `ROUTER_REPLAY_URL`. Those were last-box values, not lore. Prefer `vllm-sr status`.
+To pin a model and skip the policy, send that Fireworks model ID. The refuse path is not applied on a pin — and this project never sends a secret-shaped body on the pin path.
 
-```bash
-# Routing-only suite (free). Held-out prompts. Exits 3 on mis-routes.
-python3 scripts/eval_suite.py
+---
 
-# MoM vs pin contract (eval + one harmless pinned chat).
-python3 scripts/bypass_check.py
+## What we will not claim
 
-# One routed completion (not a pinned model).
-./scripts/e2e_probe.sh
+- **No published “% cheaper.”** Four short chats, capped completions, or a token-hold on synthetic seeds are not an agent savings rate.
+- **Containment is a heuristic** (keywords + regex), not a PII classifier. A determined leak can still get through.
+- **No live customer session** is in this repo. The histogram is labeled synthetic until someone drops redacted production turns in.
+- **Fast / Priority** are Fireworks products. We do not pretend Fast is a cheaper mid-tier.
 
-# Four live calls. Smoke only. Capped completions are incomplete.
-python3 scripts/founder_four.py
+What we *will* claim: on this policy file, the held-out routing suite is **0 / 23**, secrets are refused locally, over-budget context goes to GLM, and the default is Kimi with stay-on-prefix so cached input stays cheap.
 
-# Histogram + price the seeded traces (no Fireworks call).
-python3 scripts/trace_histogram.py
-python3 scripts/price_traces.py
-```
+---
 
-## Traces
+## For a working session
 
-[`fixtures/traces/schema.json`](fixtures/traces/schema.json) is one turn: `messages`, `tools`, `usage` (prompt / cached / completion / thinking if present), `model`, optional `quality`.
+Bring 20–50 redacted turns from the agent you actually run (prompt, tools, `usage` with cached tokens, model). We ingest them, rebuild the histogram, and re-price always-Kimi / always-GLM / always-MiniMax / routed on **your** tokens. That is the number a procurement conversation can use. Until then, the cost table stays a wiring check.
 
-```bash
-python3 scripts/ingest_trace.py path/to/request.json
-python3 scripts/ingest_trace.py path/to/dumps/   # directory
-```
-
-Point Claude Code at `MoM` and drop 20–50 redacted turns into `fixtures/traces/` when you can. Until then the histogram is labeled **synthetic-shape** and must not be quoted as live Claude Code usage.
-
-Context cutover is a **budget** (prompt + tools + thinking + max output) against 262K / 512K / 1M, not `"pad " * 210000`. The `over_kimi_budget` signal approximates that with a 230K request-token band (32K reserved for thinking + `max_tokens`).
-
-## Test set
-
-[`fixtures/prompts.json`](fixtures/prompts.json) is held-out. After the band collapse, coding one-liners and agent shapes expect `coding_default` → Kimi. Secrets expect `contain_secrets`. The long row pads enough request tokens to trip `over_kimi_budget` — it is a budget stand-in, not a repo dump.
-
-[`fixtures/complexity-exemplars.json`](fixtures/complexity-exemplars.json) is unused. Kept so nobody pastes eval prompts back into a slogan classifier.
-
-## Limitations
-
-- **Heuristic containment.** Keyword + regex. Not a PII model.
-- **No real Claude Code history** in this tree. Seed traces are synthetic shapes from the agent fixtures.
-- **Eval is routing-only.** [`docs/eval-results.md`](docs/eval-results.md) is the signed miss table for this `config.yaml`. Trace-cost is still the synthetic-shape wiring table, not a bill.
-- **No Fast / Priority experiment** unless traces show 503s or someone explicitly wants a latency column from a real Fast call.
+License: MIT.
