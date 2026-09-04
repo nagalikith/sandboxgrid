@@ -1,0 +1,37 @@
+{
+  "_comment": "Smoke fixture for scripts/cost_chart.py. Invented token counts, not live usage. Not a published claim.",
+  "items": [
+    {
+      "decision": "trivial_edit",
+      "model": "fireworks/minimax-m3",
+      "usage": {
+        "prompt_tokens": 120,
+        "completion_tokens": 40,
+        "prompt_tokens_details": { "cached_tokens": 0 }
+      }
+    },
+    {
+      "decision": "agent_turn",
+      "model": "fireworks/kimi-k2p7-code",
+      "usage": {
+        "prompt_tokens": 4000,
+        "completion_tokens": 180,
+        "prompt_tokens_details": { "cached_tokens": 3200 }
+      }
+    },
+    {
+      "decision": "long_context_window",
+      "model": "fireworks/glm-5p2",
+      "usage": {
+        "prompt_tokens": 220000,
+        "completion_tokens": 200,
+        "prompt_tokens_details": { "cached_tokens": 180000 }
+      }
+    },
+    {
+      "decision": "contain_secrets",
+      "model": "fireworks/minimax-m3",
+      "usage": { "prompt_tokens": 0, "completion_tokens": 0 }
+    }
+  ]
+}

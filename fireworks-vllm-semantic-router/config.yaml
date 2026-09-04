@@ -1,0 +1,246 @@
+version: v0.3
+
+listeners:
+  - name: http-8080
+    address: 0.0.0.0
+    port: 8080
+    timeout: 300s
+
+# ---------------------------------------------------------------------------
+# Providers: current Fireworks serverless coding models (as of 2026-09-03).
+# Official Standard cells are input / cached input / output per 1M tokens.
+# https://docs.fireworks.ai/serverless/pricing
+# MiniMax M2.5 and Kimi K2.6 Turbo are deprecated; do not use them here.
+# GLM Fast / Priority are first-party serving paths — this demo does not
+# reimplement them. GLM Standard is the 1M-context route only.
+# MiniMax stays in the catalog for smoke + counterfactual pricing. It is
+# not a route: synthetic agent traces are tool/multi-turn coding turns,
+# not short no-tool edits (see fixtures/traces/ and docs/trace-histogram.md).
+# Keep the API key OUT of this file — load it from FIREWORKS_API_KEY.
+# ---------------------------------------------------------------------------
+providers:
+  defaults:
+    default_model: fireworks/kimi-k2p7-code
+
+  models:
+    - name: fireworks/minimax-m3
+      provider_model_id: accounts/fireworks/models/minimax-m3
+      api_format: openai
+      backend_refs:
+        - name: fireworks
+          base_url: https://api.fireworks.ai/inference/v1
+          provider: openai
+          api_key_env: FIREWORKS_API_KEY
+      pricing:
+        currency: USD
+        prompt_per_1m: 0.30
+        cached_input_per_1m: 0.06
+        completion_per_1m: 1.20
+
+    - name: fireworks/glm-5p2
+      provider_model_id: accounts/fireworks/models/glm-5p2
+      api_format: openai
+      backend_refs:
+        - name: fireworks
+          base_url: https://api.fireworks.ai/inference/v1
+          provider: openai
+          api_key_env: FIREWORKS_API_KEY
+      pricing:
+        currency: USD
+        prompt_per_1m: 1.40
+        cached_input_per_1m: 0.14
+        completion_per_1m: 4.40
+
+    - name: fireworks/kimi-k2p7-code
+      provider_model_id: accounts/fireworks/models/kimi-k2p7-code
+      api_format: openai
+      backend_refs:
+        - name: fireworks
+          base_url: https://api.fireworks.ai/inference/v1
+          provider: openai
+          api_key_env: FIREWORKS_API_KEY
+      pricing:
+        currency: USD
+        prompt_per_1m: 0.95
+        cached_input_per_1m: 0.19
+        completion_per_1m: 4.00
+
+# ---------------------------------------------------------------------------
+# Collapsed policy (from fixtures/traces/ histogram, synthetic-shape).
+# Complexity cost bands (trivial_edit / moderate_change / complex_reasoning)
+# are deleted: they never fire on coding-agent traffic and a MiniMax hop
+# would bust Kimi cached input ($0.19 vs $0.95).
+# K2.7 Code thinking is on by default on Fireworks — do not send
+# chat_template_kwargs.enable_thinking (local vLLM mapping).
+# ---------------------------------------------------------------------------
+routing:
+  strategy: priority
+
+  modelCards:
+    - name: fireworks/minimax-m3
+      modality: text
+      context_window_size: 512000
+      capabilities: [chat, coding, tools]
+    - name: fireworks/glm-5p2
+      modality: text
+      context_window_size: 1048576
+      capabilities: [chat, coding, tools, reasoning, long-context]
+    - name: fireworks/kimi-k2p7-code
+      modality: text
+      context_window_size: 262144
+      capabilities: [chat, coding, reasoning, tools]
+
+  signals:
+    keywords:
+      - name: secret_markers
+        operator: OR
+        method: regex
+        case_sensitive: false
+        keywords:
+          - FIREWORKS_API_KEY
+          - BEGIN PRIVATE KEY
+          - BEGIN RSA PRIVATE KEY
+          - BEGIN OPENSSH PRIVATE KEY
+          - aws_secret_access_key
+
+    structure:
+      - name: secret_pattern
+        description: Token-shaped secret markers that should never leave the machine.
+        feature:
+          type: exists
+          source:
+            type: regex
+            pattern: '(sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20,}|fw_[A-Za-z0-9]{20,}|FIREWORKS_API_KEY\s*=)'
+
+    context:
+      # Budget gate, not pad-spam. vLLM-SR context signals count the request.
+      # Kimi window is 262144. Reserve 32K for thinking + max_tokens so the
+      # cutover is prompt (+ tools) ≳ 230K. Clients with a larger thinking
+      # budget should pin GLM or raise this band.
+      - name: over_kimi_budget
+        min_tokens: 230K
+        max_tokens: 1.5M
+        description: Request tokens leave too little room in Kimi's 262K window for thinking + max_tokens. GLM 1M.
+
+    conversation:
+      - name: has_tools
+        description: Request includes at least one tool definition. Observability only — not a cost band.
+        feature:
+          type: exists
+          source:
+            type: tool_definition
+      - name: multi_turn
+        description: At least two user messages. Observability only — not a cost band.
+        feature:
+          type: count
+          source:
+            type: message
+            role: user
+        predicate:
+          gte: 2
+      - name: tool_loop
+        description: Active tool-call loop in the request tail. Observability only — not a cost band.
+        feature:
+          type: exists
+          source:
+            type: active_tool_loop
+
+  projections:
+    scores:
+      - name: containment_risk
+        method: weighted_sum
+        inputs:
+          - type: keyword
+            name: secret_markers
+            weight: 1.0
+          - type: structure
+            name: secret_pattern
+            weight: 1.0
+    mappings:
+      - name: containment_band
+        source: containment_risk
+        method: threshold_bands
+        outputs:
+          - name: contain
+            gte: 0.5
+          - name: allow
+            lt: 0.5
+
+  decisions:
+    - name: contain_secrets
+      description: Local refuse. modelRefs is schema-required; fast_response must short-circuit before any backend call.
+      priority: 200
+      rules:
+        operator: OR
+        conditions:
+          - type: keyword
+            name: secret_markers
+          - type: structure
+            name: secret_pattern
+      modelRefs:
+        - model: fireworks/minimax-m3
+      plugins:
+        - type: fast_response
+          configuration:
+            message: Request blocked — possible secret or API key in the prompt. Remove the credential and retry.
+        - type: router_replay
+          configuration:
+            enabled: true
+            max_records: 10000
+            capture_request_body: false
+            capture_response_body: false
+
+    - name: over_kimi_budget
+      description: GLM 5.2 when prompt + reserved thinking/output no longer fits Kimi 262K. Hard cutover — quality beats a prefix that cannot complete.
+      priority: 150
+      rules:
+        operator: AND
+        conditions:
+          - type: projection
+            name: allow
+          - type: context
+            name: over_kimi_budget
+      modelRefs:
+        - model: fireworks/glm-5p2
+
+    - name: coding_default
+      description: >
+        Fail-open to Kimi K2.7 Code. Stay on this model across a hot prefix —
+        switching to MiniMax (or re-picking GLM) busts cached input
+        ($0.19 vs $0.95 on Kimi). Pin a Fireworks model ID to skip this recipe.
+      priority: 50
+      rules:
+        operator: AND
+        conditions:
+          - type: projection
+            name: allow
+      modelRefs:
+        - model: fireworks/kimi-k2p7-code
+      algorithm:
+        type: session_aware
+        session_aware:
+          base_method: hybrid
+          idle_timeout_seconds: 300
+          min_turns_before_switch: 1
+          stay_bias: 0.15
+          tool_loop_hard_lock: true
+          context_portability_hard_lock: true
+          prefix_cache_weight: 0.35
+          max_cache_cost_multiplier: 2.5
+      emits:
+        - kind: retention
+          retention:
+            drop: false
+            ttl_turns: 8
+            keep_current_model: true
+            prefer_prefix_retention: true
+
+global:
+  router:
+    config_source: file
+  services:
+    observability:
+      metrics:
+        enabled: true
+    router_replay:
+      enabled: true

@@ -1,0 +1,60 @@
+{
+  "pricing_source": "https://docs.fireworks.ai/serverless/pricing",
+  "pricing_as_of": "2026-09-03",
+  "pricing_shape": "input / cached_input / output per 1M",
+  "source": "/workspace/fireworks-vllm-semantic-router/fixtures/traces/turns.jsonl",
+  "note": "Token-hold counterfactual on captured usage. No invented cached_tokens. Not a % cheaper claim.",
+  "rows": [
+    {
+      "id": "agent-01",
+      "source": "synthetic-shape",
+      "model": "MoM",
+      "routed_model": null,
+      "prompt_tokens": 73,
+      "cached_tokens": 0,
+      "completion_tokens": 0,
+      "max_tokens": 8192,
+      "capped": false,
+      "always_kimi_usd": 6.934999999999999e-05,
+      "always_glm_usd": 0.00010219999999999999,
+      "always_minimax_usd": 2.1899999999999997e-05,
+      "routed_usd": null,
+      "live_usage": false,
+      "invented_cache": false
+    },
+    {
+      "id": "agent-02",
+      "source": "synthetic-shape",
+      "model": "MoM",
+      "routed_model": null,
+      "prompt_tokens": 50,
+      "cached_tokens": 0,
+      "completion_tokens": 0,
+      "max_tokens": 8192,
+      "capped": false,
+      "always_kimi_usd": 4.75e-05,
+      "always_glm_usd": 7e-05,
+      "always_minimax_usd": 1.5e-05,
+      "routed_usd": null,
+      "live_usage": false,
+      "invented_cache": false
+    },
+    {
+      "id": "agent-03",
+      "source": "synthetic-shape",
+      "model": "MoM",
+      "routed_model": null,
+      "prompt_tokens": 85,
+      "cached_tokens": 0,
+      "completion_tokens": 0,
+      "max_tokens": 8192,
+      "capped": false,
+      "always_kimi_usd": 8.075e-05,
+      "always_glm_usd": 0.00011899999999999999,
+      "always_minimax_usd": 2.55e-05,
+      "routed_usd": null,
+      "live_usage": false,
+      "invented_cache": false
+    }
+  ]
+}

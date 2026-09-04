@@ -1,0 +1,25 @@
+{
+  "_comment": "Unused. Complexity bands were deleted after the synthetic-shape histogram showed coding-agent turns, not short no-tool MiniMax edits. Do not paste fixtures/prompts.json into a slogan classifier.",
+  "threshold": 0.75,
+  "status": "unused",
+  "hard": [
+    "solve this step by step",
+    "compare multiple tradeoffs",
+    "analyze the root cause",
+    "refactor a circular dependency",
+    "design a caching layer",
+    "debug a race condition",
+    "compare architecture tradeoffs under multiple failure modes",
+    "synthesize research into a technical recommendation"
+  ],
+  "easy": [
+    "answer briefly",
+    "quick summary",
+    "simple rewrite",
+    "fix this typo",
+    "rename this variable",
+    "add a docstring",
+    "write a small helper function",
+    "update a simple configuration example"
+  ]
+}

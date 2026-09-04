@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/nagalikith/fireworks-vllm-semantic-router/fixtures/traces/schema.json",
+  "title": "Coding-agent turn trace",
+  "description": "One OpenAI-compat chat turn as the sidecar sees it. Do not invent Claude Code history or cached_tokens.",
+  "type": "object",
+  "required": ["id", "messages", "usage", "model"],
+  "additionalProperties": true,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Stable id for this turn (filename stem or fixture id)."
+    },
+    "source": {
+      "type": "string",
+      "enum": ["live", "synthetic-shape"],
+      "description": "live = captured request+response. synthetic-shape = structural seed, not a Claude Code dump."
+    },
+    "messages": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "object" }
+    },
+    "tools": {
+      "type": "array",
+      "description": "Tool definitions on the request, if any.",
+      "items": { "type": "object" }
+    },
+    "usage": {
+      "type": "object",
+      "required": ["prompt_tokens", "completion_tokens"],
+      "properties": {
+        "prompt_tokens": { "type": "integer", "minimum": 0 },
+        "cached_tokens": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Only from API usage.prompt_tokens_details.cached_tokens (or equivalent). Never invent."
+        },
+        "completion_tokens": { "type": "integer", "minimum": 0 },
+        "thinking_tokens": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "If the provider reports reasoning/thinking tokens separately."
+        }
+      }
+    },
+    "max_tokens": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Request max_tokens. Used to flag capped completions and to estimate context budget."
+    },
+    "model": {
+      "type": "string",
+      "description": "Requested or returned model id (MoM, a Fireworks pin, or a routed alias)."
+    },
+    "routed_model": {
+      "type": "string",
+      "description": "Physical model the sidecar or API actually used, if known."
+    },
+    "quality": {
+      "type": "string",
+      "description": "Optional human note (incomplete, refused, synthetic-shape, …)."
+    }
+  }
+}
