@@ -1,9 +1,11 @@
 version: v0.3
 
 listeners:
-  - name: http-8080
+  # Envoy chat listener. Must not be 8080: vllm-sr split topology publishes
+  # the router API on host 8080 (eval / replay). Scripts default chat to 18080.
+  - name: http-18080
     address: 0.0.0.0
-    port: 8080
+    port: 18080
     timeout: 300s
 
 # ---------------------------------------------------------------------------
@@ -216,17 +218,8 @@ routing:
             name: allow
       modelRefs:
         - model: fireworks/kimi-k2p7-code
-      algorithm:
-        type: session_aware
-        session_aware:
-          base_method: hybrid
-          idle_timeout_seconds: 300
-          min_turns_before_switch: 1
-          stay_bias: 0.15
-          tool_loop_hard_lock: true
-          context_portability_hard_lock: true
-          prefix_cache_weight: 0.35
-          max_cache_cost_multiplier: 2.5
+      # Stay is retention + router-learning protection. Do not set
+      # algorithm.type=session_aware — current vllm-sr rejects it.
       emits:
         - kind: retention
           retention:
@@ -238,6 +231,10 @@ routing:
 global:
   router:
     config_source: file
+    learning:
+      enabled: true
+      protection:
+        enabled: true
   services:
     observability:
       metrics:

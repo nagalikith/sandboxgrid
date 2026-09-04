@@ -37,13 +37,7 @@ Seeded from `agent-01`…`agent-03` only. Not a Claude Code dump. See [`docs/tra
 
 ## Eval (routing only, $0)
 
-[`fixtures/prompts.json`](../fixtures/prompts.json) is held-out. After serving **this** `config.yaml`:
-
-```bash
-python3 scripts/eval_suite.py
-```
-
-Commit the miss table as-is. Exit 3 is fine. If the router is not serving this file, eval stays **not run**.
+Held-out [`fixtures/prompts.json`](../fixtures/prompts.json) against this `config.yaml`: **0 / 23** mis-routes ([docs/eval-results.md](eval-results.md)). Routing-only. Not a Claude Code session and not a savings rate. No four-shot percentage.
 
 ## Cost
 

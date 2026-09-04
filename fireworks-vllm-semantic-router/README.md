@@ -129,5 +129,5 @@ Context cutover is a **budget** (prompt + tools + thinking + max output) against
 
 - **Heuristic containment.** Keyword + regex. Not a PII model.
 - **No real Claude Code history** in this tree. Seed traces are synthetic shapes from the agent fixtures.
-- **Router must be serving this file** before eval/cost are numbers. If it is not, those docs stay "not run."
+- **Eval is routing-only.** [`docs/eval-results.md`](docs/eval-results.md) is the signed miss table for this `config.yaml`. Trace-cost is still the synthetic-shape wiring table, not a bill.
 - **No Fast / Priority experiment** unless traces show 503s or someone explicitly wants a latency column from a real Fast call.
