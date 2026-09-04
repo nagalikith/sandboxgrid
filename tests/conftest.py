@@ -8,7 +8,11 @@ from pathlib import Path
 # collection time, before any fixture sets DATABASE_URL. Default them to a
 # per-process scratch DB so tests never write into the repo's sandbox.db.
 os.environ.setdefault("DATABASE_URL", f"sqlite:////tmp/cua_sandbox_{os.getpid()}.db")
-os.environ.setdefault("INTERNAL_AUTH_SECRET", "test-secret")
+# Tests sign internal requests with a fixed secret (see tests/auth_helpers.py),
+# so the app must use that exact secret. Force it rather than setdefault so an
+# ambient INTERNAL_AUTH_SECRET (e.g. from sourcing .cursor/dev.env in the same
+# shell) cannot break HMAC verification.
+os.environ["INTERNAL_AUTH_SECRET"] = "test-secret"
 os.environ.setdefault("SANDBOX_ARTIFACTS_ROOT", f"/tmp/cua_sandbox_{os.getpid()}/artifacts")
 
 import pytest
