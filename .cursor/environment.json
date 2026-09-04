@@ -1,0 +1,16 @@
+{
+  "name": "sandboxgrid",
+  "install": "bash .cursor/install.sh",
+  "start": "bash .cursor/start.sh",
+  "terminals": [
+    {
+      "name": "api",
+      "command": "source .venv/bin/activate && source .cursor/dev.env && exec uvicorn sandbox_api.main:app --host 0.0.0.0 --port 8000"
+    },
+    {
+      "name": "worker",
+      "command": "source .venv/bin/activate && source .cursor/dev.env && exec python -m sandbox_api.worker"
+    }
+  ],
+  "ports": [8000, 15672]
+}

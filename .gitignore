@@ -6,6 +6,7 @@ venv/
 .pytest_cache/
 .coverage
 artifacts/
+.devdata/
 sandbox.db
 *.db
 dist/
