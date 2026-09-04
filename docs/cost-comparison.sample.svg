@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="320" viewBox="0 0 720 320">
+<rect width="100%" height="100%" fill="#fff"/>
+<text x="20" y="28" font-family="sans-serif" font-size="16">Token-hold counterfactual (not agent savings)</text>
+<text x="16" y="72.0" font-family="sans-serif" font-size="12">Dynamic routing</text>
+<rect x="200" y="56.0" width="427.3" height="22" fill="#2f6fed"/>
+<text x="635.3" y="72.0" font-family="sans-serif" font-size="12">$0.084252</text>
+<text x="16" y="145.33333333333331" font-family="sans-serif" font-size="12">Always kimi-k2p7-code</text>
+<rect x="200" y="129.33333333333331" width="382.2" height="22" fill="#c23b22"/>
+<text x="590.2" y="145.33333333333331" font-family="sans-serif" font-size="12">$0.075362</text>
+<text x="16" y="218.66666666666666" font-family="sans-serif" font-size="12">Always glm-5p2</text>
+<rect x="200" y="202.66666666666666" width="430.0" height="22" fill="#b8860b"/>
+<text x="638.0" y="218.66666666666666" font-family="sans-serif" font-size="12">$0.084784</text>
+<text x="20" y="302" font-family="sans-serif" font-size="11">Same token counts on every model, including cached input. Not what another model would have generated.</text>
+</svg>

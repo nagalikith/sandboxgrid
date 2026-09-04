@@ -1,0 +1,24 @@
+{
+  "_comment": "Train-like complexity exemplars copied into config.yaml. Do not eval this file. fixtures/prompts.json is the held-out set.",
+  "threshold": 0.75,
+  "hard": [
+    "solve this step by step",
+    "compare multiple tradeoffs",
+    "analyze the root cause",
+    "refactor a circular dependency",
+    "design a caching layer",
+    "debug a race condition",
+    "compare architecture tradeoffs under multiple failure modes",
+    "synthesize research into a technical recommendation"
+  ],
+  "easy": [
+    "answer briefly",
+    "quick summary",
+    "simple rewrite",
+    "fix this typo",
+    "rename this variable",
+    "add a docstring",
+    "write a small helper function",
+    "update a simple configuration example"
+  ]
+}

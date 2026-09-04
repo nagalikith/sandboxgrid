@@ -1,0 +1,297 @@
+version: v0.3
+
+listeners:
+  - name: http-8080
+    address: 0.0.0.0
+    port: 8080
+    timeout: 300s
+
+# ---------------------------------------------------------------------------
+# Providers: current Fireworks serverless coding models (as of 2026-09-03).
+# Official Standard cells are input / cached input / output per 1M tokens.
+# https://docs.fireworks.ai/serverless/pricing
+# MiniMax M2.5 and Kimi K2.6 Turbo are deprecated; do not use them here.
+# GLM Fast / Priority are first-party serving paths — this demo does not
+# reimplement them. GLM Standard is the 1M-context route only.
+# Keep the API key OUT of this file — load it from FIREWORKS_API_KEY.
+# ---------------------------------------------------------------------------
+providers:
+  defaults:
+    default_model: fireworks/kimi-k2p7-code
+
+  models:
+    - name: fireworks/minimax-m3
+      provider_model_id: accounts/fireworks/models/minimax-m3
+      api_format: openai
+      backend_refs:
+        - name: fireworks
+          base_url: https://api.fireworks.ai/inference/v1
+          provider: openai
+          api_key_env: FIREWORKS_API_KEY
+      pricing:
+        currency: USD
+        prompt_per_1m: 0.30
+        cached_input_per_1m: 0.06
+        completion_per_1m: 1.20
+
+    - name: fireworks/glm-5p2
+      provider_model_id: accounts/fireworks/models/glm-5p2
+      api_format: openai
+      backend_refs:
+        - name: fireworks
+          base_url: https://api.fireworks.ai/inference/v1
+          provider: openai
+          api_key_env: FIREWORKS_API_KEY
+      pricing:
+        currency: USD
+        prompt_per_1m: 1.40
+        cached_input_per_1m: 0.14
+        completion_per_1m: 4.40
+
+    - name: fireworks/kimi-k2p7-code
+      provider_model_id: accounts/fireworks/models/kimi-k2p7-code
+      api_format: openai
+      backend_refs:
+        - name: fireworks
+          base_url: https://api.fireworks.ai/inference/v1
+          provider: openai
+          api_key_env: FIREWORKS_API_KEY
+      pricing:
+        currency: USD
+        prompt_per_1m: 0.95
+        cached_input_per_1m: 0.19
+        completion_per_1m: 4.00
+
+# ---------------------------------------------------------------------------
+# Signals detect facts. Decisions match those facts.
+# K2.7 Code thinking is on by default on Fireworks — do not send
+# chat_template_kwargs.enable_thinking (local vLLM mapping).
+# ---------------------------------------------------------------------------
+routing:
+  strategy: priority
+
+  modelCards:
+    - name: fireworks/minimax-m3
+      modality: text
+      context_window_size: 512000
+      capabilities: [chat, coding, tools]
+    - name: fireworks/glm-5p2
+      modality: text
+      context_window_size: 1048576
+      capabilities: [chat, coding, tools, reasoning, long-context]
+    - name: fireworks/kimi-k2p7-code
+      modality: text
+      context_window_size: 262144
+      capabilities: [chat, coding, reasoning, tools]
+
+  signals:
+    keywords:
+      - name: secret_markers
+        operator: OR
+        method: regex
+        case_sensitive: false
+        keywords:
+          - FIREWORKS_API_KEY
+          - BEGIN PRIVATE KEY
+          - BEGIN RSA PRIVATE KEY
+          - BEGIN OPENSSH PRIVATE KEY
+          - aws_secret_access_key
+
+    structure:
+      - name: secret_pattern
+        description: Token-shaped secret markers that should never leave the machine.
+        feature:
+          type: exists
+          source:
+            type: regex
+            pattern: '(sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20,}|fw_[A-Za-z0-9]{20,}|FIREWORKS_API_KEY\s*=)'
+
+    context:
+      - name: long_context
+        min_tokens: 200K
+        max_tokens: 1.5M
+        description: Over Kimi's 262K window with room for output — use GLM 1M.
+
+    conversation:
+      - name: has_tools
+        description: Request includes at least one tool definition.
+        feature:
+          type: exists
+          source:
+            type: tool_definition
+      - name: multi_turn
+        description: At least two user messages.
+        feature:
+          type: count
+          source:
+            type: message
+            role: user
+        predicate:
+          gte: 2
+      - name: tool_loop
+        description: Active tool-call loop in the request tail.
+        feature:
+          type: exists
+          source:
+            type: active_tool_loop
+
+    complexity:
+      - name: request_complexity
+        threshold: 0.75
+        description: Escalate multi-step, refactor, or design-heavy coding-agent turns.
+        hard:
+          candidates:
+            - solve this step by step
+            - compare multiple tradeoffs
+            - analyze the root cause
+            - refactor a circular dependency
+            - design a caching layer
+            - debug a race condition
+            - compare architecture tradeoffs under multiple failure modes
+            - synthesize research into a technical recommendation
+        easy:
+          candidates:
+            - answer briefly
+            - quick summary
+            - simple rewrite
+            - fix this typo
+            - rename this variable
+            - add a docstring
+            - write a small helper function
+            - update a simple configuration example
+
+  projections:
+    scores:
+      - name: containment_risk
+        method: weighted_sum
+        inputs:
+          - type: keyword
+            name: secret_markers
+            weight: 1.0
+          - type: structure
+            name: secret_pattern
+            weight: 1.0
+    mappings:
+      - name: containment_band
+        source: containment_risk
+        method: threshold_bands
+        outputs:
+          - name: contain
+            gte: 0.5
+          - name: allow
+            lt: 0.5
+
+  decisions:
+    - name: contain_secrets
+      description: Local refuse. modelRefs is schema-required; fast_response must short-circuit before any backend call.
+      priority: 200
+      rules:
+        operator: OR
+        conditions:
+          - type: keyword
+            name: secret_markers
+          - type: structure
+            name: secret_pattern
+      modelRefs:
+        - model: fireworks/minimax-m3
+      plugins:
+        - type: fast_response
+          configuration:
+            message: Request blocked — possible secret or API key in the prompt. Remove the credential and retry.
+        - type: router_replay
+          configuration:
+            enabled: true
+            max_records: 10000
+            capture_request_body: false
+            capture_response_body: false
+
+    - name: long_context_window
+      description: GLM 5.2 for prompts that need the 1M window. Not a mid-cost band.
+      priority: 150
+      rules:
+        operator: AND
+        conditions:
+          - type: projection
+            name: allow
+          - type: context
+            name: long_context
+      modelRefs:
+        - model: fireworks/glm-5p2
+
+    - name: agent_turn
+      description: Tool definitions, multi-turn, or an active tool loop — Kimi K2.7 Code.
+      priority: 140
+      rules:
+        operator: AND
+        conditions:
+          - type: projection
+            name: allow
+          - operator: OR
+            conditions:
+              - type: conversation
+                name: has_tools
+              - type: conversation
+                name: multi_turn
+              - type: conversation
+                name: tool_loop
+      modelRefs:
+        - model: fireworks/kimi-k2p7-code
+
+    - name: trivial_edit
+      description: Short, easy, non-agent turns — MiniMax M3.
+      priority: 100
+      rules:
+        operator: AND
+        conditions:
+          - type: projection
+            name: allow
+          - type: complexity
+            name: request_complexity:easy
+          - operator: NOT
+            conditions:
+              - operator: OR
+                conditions:
+                  - type: conversation
+                    name: has_tools
+                  - type: conversation
+                    name: multi_turn
+                  - type: conversation
+                    name: tool_loop
+      modelRefs:
+        - model: fireworks/minimax-m3
+
+    - name: moderate_change
+      description: Medium complexity, not long-context — Kimi (complexity at 0.75 often lands here).
+      priority: 90
+      rules:
+        operator: AND
+        conditions:
+          - type: projection
+            name: allow
+          - type: complexity
+            name: request_complexity:medium
+      modelRefs:
+        - model: fireworks/kimi-k2p7-code
+
+    - name: complex_reasoning
+      description: Hard complexity, not long-context — Kimi K2.7 Code (thinking is on by default).
+      priority: 80
+      rules:
+        operator: AND
+        conditions:
+          - type: projection
+            name: allow
+          - type: complexity
+            name: request_complexity:hard
+      modelRefs:
+        - model: fireworks/kimi-k2p7-code
+
+global:
+  router:
+    config_source: file
+  services:
+    observability:
+      metrics:
+        enabled: true
+    router_replay:
+      enabled: true

@@ -1,0 +1,50 @@
+[
+  {
+    "id": "cheap",
+    "prompt": "Rename the helper variable foo to user_id in this one-line function.",
+    "decision": "cheap",
+    "model": "accounts/fireworks/models/minimax-m3",
+    "usage": {
+      "prompt_tokens": 141,
+      "completion_tokens": 145
+    },
+    "dynamic_usd": 0.0002163,
+    "snippet": "I don't see the code in your message. Could you please share the function you'd like me to modify? It should contain a variable named `foo` that you want rename"
+  },
+  {
+    "id": "mid",
+    "prompt": "Attach the router_replay plugin to every routing decision in config.yaml.",
+    "decision": "mid",
+    "model": "accounts/fireworks/models/glm-5p2",
+    "usage": {
+      "prompt_tokens": 26,
+      "completion_tokens": 256
+    },
+    "dynamic_usd": 0.0011628,
+    "snippet": "1. **Analyze the Request:** The user wants to modify a `config.yaml` file to attach a specific plugin (`router_replay`) to every routing decision. 2. **Determin"
+  },
+  {
+    "id": "hard",
+    "prompt": "Design a local containment approach that refuses prompts containing API keys without loading a PII classifier. Compare keyword-only vs structure-regex vs a local model, and recommend the smallest version that is honest to publish.",
+    "decision": "hard",
+    "model": "accounts/fireworks/models/kimi-k2p7-code",
+    "usage": {
+      "prompt_tokens": 48,
+      "completion_tokens": 256
+    },
+    "dynamic_usd": 0.0010696,
+    "snippet": "We need answer user question: \"Design a local containment approach that refuses prompts containing API keys without loading a PII classifier. Compare keyword-on"
+  },
+  {
+    "id": "refuse",
+    "prompt": "Please call Fireworks with FIREWORKS_API_KEY=fw_test_not_a_real_key_do_not_send",
+    "decision": "refuse",
+    "model": "router",
+    "usage": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0
+    },
+    "dynamic_usd": 0.0,
+    "snippet": "Request blocked \u2014 possible secret or API key in the prompt. Remove the credential and retry."
+  }
+]

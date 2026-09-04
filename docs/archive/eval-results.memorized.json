@@ -1,0 +1,3023 @@
+[
+  {
+    "id": "easy-01",
+    "expected_band": "cheap",
+    "expected_decision": "trivial_edit",
+    "prompt": "Rename the helper variable foo to user_id in this one-line function.",
+    "ok": true,
+    "decision": "trivial_edit",
+    "model": "fireworks/minimax-m3",
+    "matched": {
+      "complexity": [
+        "request_complexity:easy"
+      ],
+      "projection": [
+        "allow",
+        "cheap"
+      ]
+    },
+    "used": {
+      "projection": [
+        "cheap"
+      ]
+    },
+    "looks_right": true,
+    "payload": {
+      "original_text": "Rename the helper variable foo to user_id in this one-line function.",
+      "recipe": "default",
+      "decision_result": {
+        "decision_name": "trivial_edit",
+        "algorithm": "static",
+        "plugins": [
+          "router_replay"
+        ],
+        "used_signals": {
+          "projection": [
+            "cheap"
+          ]
+        },
+        "matched_signals": {
+          "complexity": [
+            "request_complexity:easy"
+          ],
+          "projection": [
+            "allow",
+            "cheap"
+          ]
+        },
+        "unmatched_signals": {
+          "keywords": [
+            "secret_markers"
+          ],
+          "structure": [
+            "secret_pattern"
+          ],
+          "complexity": [
+            "request_complexity"
+          ],
+          "projection": [
+            "contain",
+            "mid",
+            "hard"
+          ]
+        }
+      },
+      "recommended_models": [
+        "fireworks/minimax-m3"
+      ],
+      "routing_decision": "trivial_edit",
+      "metrics": {
+        "keyword": {
+          "execution_time_ms": 0.067,
+          "confidence": 1
+        },
+        "embedding": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "domain": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "fact_check": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "user_feedback": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "reask": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "preference": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "language": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "context": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "structure": {
+          "execution_time_ms": 0.023,
+          "confidence": 0
+        },
+        "complexity": {
+          "execution_time_ms": 488.202,
+          "confidence": 0.4407367743551731
+        },
+        "modality": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "authz": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "jailbreak": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "pii": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "kb": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "conversation": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "event": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "metadata": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "classifier": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        }
+      },
+      "signal_confidences": {
+        "complexity:request_complexity:easy": 0.4407367743551731,
+        "projection:allow": 0.9975273768433653,
+        "projection:cheap": 0.9955037268390589,
+        "structure:secret_pattern": 0
+      },
+      "signal_values": {
+        "complexity:request_complexity:image_easy_score": 0,
+        "complexity:request_complexity:image_hard_score": 0,
+        "complexity:request_complexity:image_margin": 0,
+        "complexity:request_complexity:margin": -0.4407367743551731,
+        "complexity:request_complexity:text_easy_score": 0.9645957946777344,
+        "complexity:request_complexity:text_hard_score": 0.5238590203225613,
+        "complexity:request_complexity:text_margin": -0.4407367743551731,
+        "structure:secret_pattern": 0
+      }
+    }
+  },
+  {
+    "id": "easy-02",
+    "expected_band": "cheap",
+    "expected_decision": "trivial_edit",
+    "prompt": "Fix the typo 'recieve' to 'receive' in the error message string.",
+    "ok": true,
+    "decision": "trivial_edit",
+    "model": "fireworks/minimax-m3",
+    "matched": {
+      "complexity": [
+        "request_complexity:easy"
+      ],
+      "projection": [
+        "allow",
+        "cheap"
+      ]
+    },
+    "used": {
+      "projection": [
+        "cheap"
+      ]
+    },
+    "looks_right": true,
+    "payload": {
+      "original_text": "Fix the typo 'recieve' to 'receive' in the error message string.",
+      "recipe": "default",
+      "decision_result": {
+        "decision_name": "trivial_edit",
+        "algorithm": "static",
+        "plugins": [
+          "router_replay"
+        ],
+        "used_signals": {
+          "projection": [
+            "cheap"
+          ]
+        },
+        "matched_signals": {
+          "complexity": [
+            "request_complexity:easy"
+          ],
+          "projection": [
+            "allow",
+            "cheap"
+          ]
+        },
+        "unmatched_signals": {
+          "keywords": [
+            "secret_markers"
+          ],
+          "structure": [
+            "secret_pattern"
+          ],
+          "complexity": [
+            "request_complexity"
+          ],
+          "projection": [
+            "contain",
+            "mid",
+            "hard"
+          ]
+        }
+      },
+      "recommended_models": [
+        "fireworks/minimax-m3"
+      ],
+      "routing_decision": "trivial_edit",
+      "metrics": {
+        "keyword": {
+          "execution_time_ms": 0.029,
+          "confidence": 1
+        },
+        "embedding": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "domain": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "fact_check": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "user_feedback": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "reask": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "preference": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "language": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "context": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "structure": {
+          "execution_time_ms": 0.022,
+          "confidence": 0
+        },
+        "complexity": {
+          "execution_time_ms": 418.036,
+          "confidence": 0.41282059997320175
+        },
+        "modality": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "authz": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "jailbreak": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "pii": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "kb": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "conversation": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "event": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "metadata": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "classifier": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        }
+      },
+      "signal_confidences": {
+        "complexity:request_complexity:easy": 0.41282059997320175,
+        "projection:allow": 0.9975273768433653,
+        "projection:cheap": 0.9955037268390589,
+        "structure:secret_pattern": 0
+      },
+      "signal_values": {
+        "complexity:request_complexity:image_easy_score": 0,
+        "complexity:request_complexity:image_hard_score": 0,
+        "complexity:request_complexity:image_margin": 0,
+        "complexity:request_complexity:margin": -0.41282059997320175,
+        "complexity:request_complexity:text_easy_score": 0.967486634850502,
+        "complexity:request_complexity:text_hard_score": 0.5546660348773003,
+        "complexity:request_complexity:text_margin": -0.41282059997320175,
+        "structure:secret_pattern": 0
+      }
+    }
+  },
+  {
+    "id": "easy-03",
+    "expected_band": "cheap",
+    "expected_decision": "trivial_edit",
+    "prompt": "Add a one-sentence docstring to the cost_usd function.",
+    "ok": true,
+    "decision": "trivial_edit",
+    "model": "fireworks/minimax-m3",
+    "matched": {
+      "complexity": [
+        "request_complexity:easy"
+      ],
+      "projection": [
+        "allow",
+        "cheap"
+      ]
+    },
+    "used": {
+      "projection": [
+        "cheap"
+      ]
+    },
+    "looks_right": true,
+    "payload": {
+      "original_text": "Add a one-sentence docstring to the cost_usd function.",
+      "recipe": "default",
+      "decision_result": {
+        "decision_name": "trivial_edit",
+        "algorithm": "static",
+        "plugins": [
+          "router_replay"
+        ],
+        "used_signals": {
+          "projection": [
+            "cheap"
+          ]
+        },
+        "matched_signals": {
+          "complexity": [
+            "request_complexity:easy"
+          ],
+          "projection": [
+            "allow",
+            "cheap"
+          ]
+        },
+        "unmatched_signals": {
+          "keywords": [
+            "secret_markers"
+          ],
+          "structure": [
+            "secret_pattern"
+          ],
+          "complexity": [
+            "request_complexity"
+          ],
+          "projection": [
+            "contain",
+            "mid",
+            "hard"
+          ]
+        }
+      },
+      "recommended_models": [
+        "fireworks/minimax-m3"
+      ],
+      "routing_decision": "trivial_edit",
+      "metrics": {
+        "keyword": {
+          "execution_time_ms": 0.025,
+          "confidence": 1
+        },
+        "embedding": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "domain": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "fact_check": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "user_feedback": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "reask": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "preference": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "language": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "context": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "structure": {
+          "execution_time_ms": 0.026,
+          "confidence": 0
+        },
+        "complexity": {
+          "execution_time_ms": 388.566,
+          "confidence": 0.3887067809700966
+        },
+        "modality": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "authz": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "jailbreak": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "pii": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "kb": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "conversation": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "event": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "metadata": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "classifier": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        }
+      },
+      "signal_confidences": {
+        "complexity:request_complexity:easy": 0.3887067809700966,
+        "projection:allow": 0.9975273768433653,
+        "projection:cheap": 0.9955037268390589,
+        "structure:secret_pattern": 0
+      },
+      "signal_values": {
+        "complexity:request_complexity:image_easy_score": 0,
+        "complexity:request_complexity:image_hard_score": 0,
+        "complexity:request_complexity:image_margin": 0,
+        "complexity:request_complexity:margin": -0.3887067809700966,
+        "complexity:request_complexity:text_easy_score": 0.9694393575191498,
+        "complexity:request_complexity:text_hard_score": 0.5807325765490532,
+        "complexity:request_complexity:text_margin": -0.3887067809700966,
+        "structure:secret_pattern": 0
+      }
+    }
+  },
+  {
+    "id": "easy-04",
+    "expected_band": "cheap",
+    "expected_decision": "trivial_edit",
+    "prompt": "Quick summary of what scripts/e2e_probe.sh does, two sentences.",
+    "ok": true,
+    "decision": "trivial_edit",
+    "model": "fireworks/minimax-m3",
+    "matched": {
+      "complexity": [
+        "request_complexity:easy"
+      ],
+      "projection": [
+        "allow",
+        "cheap"
+      ]
+    },
+    "used": {
+      "projection": [
+        "cheap"
+      ]
+    },
+    "looks_right": true,
+    "payload": {
+      "original_text": "Quick summary of what scripts/e2e_probe.sh does, two sentences.",
+      "recipe": "default",
+      "decision_result": {
+        "decision_name": "trivial_edit",
+        "algorithm": "static",
+        "plugins": [
+          "router_replay"
+        ],
+        "used_signals": {
+          "projection": [
+            "cheap"
+          ]
+        },
+        "matched_signals": {
+          "complexity": [
+            "request_complexity:easy"
+          ],
+          "projection": [
+            "allow",
+            "cheap"
+          ]
+        },
+        "unmatched_signals": {
+          "keywords": [
+            "secret_markers"
+          ],
+          "structure": [
+            "secret_pattern"
+          ],
+          "complexity": [
+            "request_complexity"
+          ],
+          "projection": [
+            "contain",
+            "mid",
+            "hard"
+          ]
+        }
+      },
+      "recommended_models": [
+        "fireworks/minimax-m3"
+      ],
+      "routing_decision": "trivial_edit",
+      "metrics": {
+        "keyword": {
+          "execution_time_ms": 0.032,
+          "confidence": 1
+        },
+        "embedding": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "domain": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "fact_check": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "user_feedback": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "reask": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "preference": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "language": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "context": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "structure": {
+          "execution_time_ms": 0.08,
+          "confidence": 0
+        },
+        "complexity": {
+          "execution_time_ms": 397.371,
+          "confidence": 0.3824600353837013
+        },
+        "modality": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "authz": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "jailbreak": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "pii": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "kb": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "conversation": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "event": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "metadata": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "classifier": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        }
+      },
+      "signal_confidences": {
+        "complexity:request_complexity:easy": 0.3824600353837013,
+        "projection:allow": 0.9975273768433653,
+        "projection:cheap": 0.9955037268390589,
+        "structure:secret_pattern": 0
+      },
+      "signal_values": {
+        "complexity:request_complexity:image_easy_score": 0,
+        "complexity:request_complexity:image_hard_score": 0,
+        "complexity:request_complexity:image_margin": 0,
+        "complexity:request_complexity:margin": -0.3824600353837013,
+        "complexity:request_complexity:text_easy_score": 0.9574312195181847,
+        "complexity:request_complexity:text_hard_score": 0.5749711841344833,
+        "complexity:request_complexity:text_margin": -0.3824600353837013,
+        "structure:secret_pattern": 0
+      }
+    }
+  },
+  {
+    "id": "easy-05",
+    "expected_band": "cheap",
+    "expected_decision": "trivial_edit",
+    "prompt": "Simple rewrite: change the print prefix from OK: to PASS: in the probe script.",
+    "ok": true,
+    "decision": "trivial_edit",
+    "model": "fireworks/minimax-m3",
+    "matched": {
+      "complexity": [
+        "request_complexity:easy"
+      ],
+      "projection": [
+        "allow",
+        "cheap"
+      ]
+    },
+    "used": {
+      "projection": [
+        "cheap"
+      ]
+    },
+    "looks_right": true,
+    "payload": {
+      "original_text": "Simple rewrite: change the print prefix from OK: to PASS: in the probe script.",
+      "recipe": "default",
+      "decision_result": {
+        "decision_name": "trivial_edit",
+        "algorithm": "static",
+        "plugins": [
+          "router_replay"
+        ],
+        "used_signals": {
+          "projection": [
+            "cheap"
+          ]
+        },
+        "matched_signals": {
+          "complexity": [
+            "request_complexity:easy"
+          ],
+          "projection": [
+            "allow",
+            "cheap"
+          ]
+        },
+        "unmatched_signals": {
+          "keywords": [
+            "secret_markers"
+          ],
+          "structure": [
+            "secret_pattern"
+          ],
+          "complexity": [
+            "request_complexity"
+          ],
+          "projection": [
+            "contain",
+            "mid",
+            "hard"
+          ]
+        }
+      },
+      "recommended_models": [
+        "fireworks/minimax-m3"
+      ],
+      "routing_decision": "trivial_edit",
+      "metrics": {
+        "keyword": {
+          "execution_time_ms": 0.034,
+          "confidence": 1
+        },
+        "embedding": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "domain": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "fact_check": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "user_feedback": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "reask": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "preference": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "language": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "context": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "structure": {
+          "execution_time_ms": 0.02,
+          "confidence": 0
+        },
+        "complexity": {
+          "execution_time_ms": 401.293,
+          "confidence": 0.40467584878206253
+        },
+        "modality": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "authz": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "jailbreak": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "pii": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "kb": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "conversation": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "event": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "metadata": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "classifier": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        }
+      },
+      "signal_confidences": {
+        "complexity:request_complexity:easy": 0.40467584878206253,
+        "projection:allow": 0.9975273768433653,
+        "projection:cheap": 0.9955037268390589,
+        "structure:secret_pattern": 0
+      },
+      "signal_values": {
+        "complexity:request_complexity:image_easy_score": 0,
+        "complexity:request_complexity:image_hard_score": 0,
+        "complexity:request_complexity:image_margin": 0,
+        "complexity:request_complexity:margin": -0.40467584878206253,
+        "complexity:request_complexity:text_easy_score": 0.9574315324425697,
+        "complexity:request_complexity:text_hard_score": 0.5527556836605072,
+        "complexity:request_complexity:text_margin": -0.40467584878206253,
+        "structure:secret_pattern": 0
+      }
+    }
+  },
+  {
+    "id": "mid-01",
+    "expected_band": "mid",
+    "expected_decision": "moderate_change",
+    "prompt": "Attach the router_replay plugin to every routing decision in config.yaml, not just the hard-tier one, and keep the same capture settings.",
+    "ok": true,
+    "decision": "moderate_change",
+    "model": "fireworks/glm-5p2",
+    "matched": {
+      "complexity": [
+        "request_complexity:medium"
+      ],
+      "projection": [
+        "allow",
+        "mid"
+      ]
+    },
+    "used": {
+      "projection": [
+        "mid"
+      ]
+    },
+    "looks_right": true,
+    "payload": {
+      "original_text": "Attach the router_replay plugin to every routing decision in config.yaml, not just the hard-tier one, and keep the same capture settings.",
+      "recipe": "default",
+      "decision_result": {
+        "decision_name": "moderate_change",
+        "algorithm": "static",
+        "plugins": [
+          "router_replay"
+        ],
+        "used_signals": {
+          "projection": [
+            "mid"
+          ]
+        },
+        "matched_signals": {
+          "complexity": [
+            "request_complexity:medium"
+          ],
+          "projection": [
+            "allow",
+            "mid"
+          ]
+        },
+        "unmatched_signals": {
+          "keywords": [
+            "secret_markers"
+          ],
+          "structure": [
+            "secret_pattern"
+          ],
+          "complexity": [
+            "request_complexity"
+          ],
+          "projection": [
+            "contain",
+            "cheap",
+            "hard"
+          ]
+        }
+      },
+      "recommended_models": [
+        "fireworks/glm-5p2"
+      ],
+      "routing_decision": "moderate_change",
+      "metrics": {
+        "keyword": {
+          "execution_time_ms": 0.057,
+          "confidence": 1
+        },
+        "embedding": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "domain": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "fact_check": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "user_feedback": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "reask": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "preference": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "language": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "context": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "structure": {
+          "execution_time_ms": 0.035,
+          "confidence": 0
+        },
+        "complexity": {
+          "execution_time_ms": 481.048,
+          "confidence": 0.29528067633509636
+        },
+        "modality": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "authz": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "jailbreak": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "pii": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "kb": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "conversation": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "event": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "metadata": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "classifier": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        }
+      },
+      "signal_confidences": {
+        "complexity:request_complexity:medium": 0.29528067633509636,
+        "projection:allow": 0.9975273768433653,
+        "projection:mid": 0.8581489350995123,
+        "structure:secret_pattern": 0
+      },
+      "signal_values": {
+        "complexity:request_complexity:image_easy_score": 0,
+        "complexity:request_complexity:image_hard_score": 0,
+        "complexity:request_complexity:image_margin": 0,
+        "complexity:request_complexity:margin": 0.29528067633509636,
+        "complexity:request_complexity:text_easy_score": 0.5109831877052784,
+        "complexity:request_complexity:text_hard_score": 0.8062638640403748,
+        "complexity:request_complexity:text_margin": 0.29528067633509636,
+        "structure:secret_pattern": 0
+      }
+    }
+  },
+  {
+    "id": "mid-02",
+    "expected_band": "mid",
+    "expected_decision": "moderate_change",
+    "prompt": "Update .gitignore so .vllm-sr/, models/, and .env are never committed, then say what else should stay untracked.",
+    "ok": true,
+    "decision": "moderate_change",
+    "model": "fireworks/glm-5p2",
+    "matched": {
+      "complexity": [
+        "request_complexity:medium"
+      ],
+      "projection": [
+        "allow",
+        "mid"
+      ]
+    },
+    "used": {
+      "projection": [
+        "mid"
+      ]
+    },
+    "looks_right": true,
+    "payload": {
+      "original_text": "Update .gitignore so .vllm-sr/, models/, and .env are never committed, then say what else should stay untracked.",
+      "recipe": "default",
+      "decision_result": {
+        "decision_name": "moderate_change",
+        "algorithm": "static",
+        "plugins": [
+          "router_replay"
+        ],
+        "used_signals": {
+          "projection": [
+            "mid"
+          ]
+        },
+        "matched_signals": {
+          "complexity": [
+            "request_complexity:medium"
+          ],
+          "projection": [
+            "allow",
+            "mid"
+          ]
+        },
+        "unmatched_signals": {
+          "keywords": [
+            "secret_markers"
+          ],
+          "structure": [
+            "secret_pattern"
+          ],
+          "complexity": [
+            "request_complexity"
+          ],
+          "projection": [
+            "contain",
+            "cheap",
+            "hard"
+          ]
+        }
+      },
+      "recommended_models": [
+        "fireworks/glm-5p2"
+      ],
+      "routing_decision": "moderate_change",
+      "metrics": {
+        "keyword": {
+          "execution_time_ms": 0.039,
+          "confidence": 1
+        },
+        "embedding": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "domain": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "fact_check": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "user_feedback": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "reask": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "preference": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "language": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "context": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "structure": {
+          "execution_time_ms": 0.039,
+          "confidence": 0
+        },
+        "complexity": {
+          "execution_time_ms": 491.021,
+          "confidence": 0.0762796513736248
+        },
+        "modality": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "authz": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "jailbreak": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "pii": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "kb": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "conversation": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "event": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "metadata": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "classifier": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        }
+      },
+      "signal_confidences": {
+        "complexity:request_complexity:medium": 0.0762796513736248,
+        "projection:allow": 0.9975273768433653,
+        "projection:mid": 0.8581489350995123,
+        "structure:secret_pattern": 0
+      },
+      "signal_values": {
+        "complexity:request_complexity:image_easy_score": 0,
+        "complexity:request_complexity:image_hard_score": 0,
+        "complexity:request_complexity:image_margin": 0,
+        "complexity:request_complexity:margin": 0.0762796513736248,
+        "complexity:request_complexity:text_easy_score": 0.4640231691300869,
+        "complexity:request_complexity:text_hard_score": 0.5403028205037117,
+        "complexity:request_complexity:text_margin": 0.0762796513736248,
+        "structure:secret_pattern": 0
+      }
+    }
+  },
+  {
+    "id": "mid-03",
+    "expected_band": "mid",
+    "expected_decision": "moderate_change",
+    "prompt": "Write a small Python helper that loads fixtures/prompts.json and prints id plus expected_decision for each row.",
+    "ok": true,
+    "decision": "moderate_change",
+    "model": "fireworks/glm-5p2",
+    "matched": {
+      "complexity": [
+        "request_complexity:medium"
+      ],
+      "projection": [
+        "allow",
+        "mid"
+      ]
+    },
+    "used": {
+      "projection": [
+        "mid"
+      ]
+    },
+    "looks_right": true,
+    "payload": {
+      "original_text": "Write a small Python helper that loads fixtures/prompts.json and prints id plus expected_decision for each row.",
+      "recipe": "default",
+      "decision_result": {
+        "decision_name": "moderate_change",
+        "algorithm": "static",
+        "plugins": [
+          "router_replay"
+        ],
+        "used_signals": {
+          "projection": [
+            "mid"
+          ]
+        },
+        "matched_signals": {
+          "complexity": [
+            "request_complexity:medium"
+          ],
+          "projection": [
+            "allow",
+            "mid"
+          ]
+        },
+        "unmatched_signals": {
+          "keywords": [
+            "secret_markers"
+          ],
+          "structure": [
+            "secret_pattern"
+          ],
+          "complexity": [
+            "request_complexity"
+          ],
+          "projection": [
+            "contain",
+            "cheap",
+            "hard"
+          ]
+        }
+      },
+      "recommended_models": [
+        "fireworks/glm-5p2"
+      ],
+      "routing_decision": "moderate_change",
+      "metrics": {
+        "keyword": {
+          "execution_time_ms": 0.039,
+          "confidence": 1
+        },
+        "embedding": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "domain": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "fact_check": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "user_feedback": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "reask": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "preference": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "language": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "context": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "structure": {
+          "execution_time_ms": 0.029,
+          "confidence": 0
+        },
+        "complexity": {
+          "execution_time_ms": 465.507,
+          "confidence": 0.026610538363456726
+        },
+        "modality": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "authz": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "jailbreak": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "pii": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "kb": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "conversation": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "event": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "metadata": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "classifier": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        }
+      },
+      "signal_confidences": {
+        "complexity:request_complexity:medium": 0.026610538363456726,
+        "projection:allow": 0.9975273768433653,
+        "projection:mid": 0.8581489350995123,
+        "structure:secret_pattern": 0
+      },
+      "signal_values": {
+        "complexity:request_complexity:image_easy_score": 0,
+        "complexity:request_complexity:image_hard_score": 0,
+        "complexity:request_complexity:image_margin": 0,
+        "complexity:request_complexity:margin": -0.026610538363456726,
+        "complexity:request_complexity:text_easy_score": 0.6636331975460052,
+        "complexity:request_complexity:text_hard_score": 0.6370226591825485,
+        "complexity:request_complexity:text_margin": -0.026610538363456726,
+        "structure:secret_pattern": 0
+      }
+    }
+  },
+  {
+    "id": "mid-04",
+    "expected_band": "mid",
+    "expected_decision": "moderate_change",
+    "prompt": "Add CLI flags to scripts/eval_suite.py so I can override the eval endpoint and write results to a custom path.",
+    "ok": true,
+    "decision": "moderate_change",
+    "model": "fireworks/glm-5p2",
+    "matched": {
+      "complexity": [
+        "request_complexity:medium"
+      ],
+      "projection": [
+        "allow",
+        "mid"
+      ]
+    },
+    "used": {
+      "projection": [
+        "mid"
+      ]
+    },
+    "looks_right": true,
+    "payload": {
+      "original_text": "Add CLI flags to scripts/eval_suite.py so I can override the eval endpoint and write results to a custom path.",
+      "recipe": "default",
+      "decision_result": {
+        "decision_name": "moderate_change",
+        "algorithm": "static",
+        "plugins": [
+          "router_replay"
+        ],
+        "used_signals": {
+          "projection": [
+            "mid"
+          ]
+        },
+        "matched_signals": {
+          "complexity": [
+            "request_complexity:medium"
+          ],
+          "projection": [
+            "allow",
+            "mid"
+          ]
+        },
+        "unmatched_signals": {
+          "keywords": [
+            "secret_markers"
+          ],
+          "structure": [
+            "secret_pattern"
+          ],
+          "complexity": [
+            "request_complexity"
+          ],
+          "projection": [
+            "contain",
+            "cheap",
+            "hard"
+          ]
+        }
+      },
+      "recommended_models": [
+        "fireworks/glm-5p2"
+      ],
+      "routing_decision": "moderate_change",
+      "metrics": {
+        "keyword": {
+          "execution_time_ms": 0.033,
+          "confidence": 1
+        },
+        "embedding": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "domain": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "fact_check": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "user_feedback": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "reask": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "preference": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "language": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "context": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "structure": {
+          "execution_time_ms": 0.027,
+          "confidence": 0
+        },
+        "complexity": {
+          "execution_time_ms": 483.231,
+          "confidence": 0.044872432947158813
+        },
+        "modality": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "authz": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "jailbreak": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "pii": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "kb": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "conversation": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "event": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "metadata": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "classifier": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        }
+      },
+      "signal_confidences": {
+        "complexity:request_complexity:medium": 0.044872432947158813,
+        "projection:allow": 0.9975273768433653,
+        "projection:mid": 0.8581489350995123,
+        "structure:secret_pattern": 0
+      },
+      "signal_values": {
+        "complexity:request_complexity:image_easy_score": 0,
+        "complexity:request_complexity:image_hard_score": 0,
+        "complexity:request_complexity:image_margin": 0,
+        "complexity:request_complexity:margin": -0.044872432947158813,
+        "complexity:request_complexity:text_easy_score": 0.6144610643386841,
+        "complexity:request_complexity:text_hard_score": 0.5695886313915253,
+        "complexity:request_complexity:text_margin": -0.044872432947158813,
+        "structure:secret_pattern": 0
+      }
+    }
+  },
+  {
+    "id": "mid-05",
+    "expected_band": "mid",
+    "expected_decision": "moderate_change",
+    "prompt": "Replace the placeholder Fireworks prices in config.yaml with the official Standard list rates and leave a comment citing the docs URL and date.",
+    "ok": true,
+    "decision": "moderate_change",
+    "model": "fireworks/glm-5p2",
+    "matched": {
+      "complexity": [
+        "request_complexity:medium"
+      ],
+      "projection": [
+        "allow",
+        "mid"
+      ]
+    },
+    "used": {
+      "projection": [
+        "mid"
+      ]
+    },
+    "looks_right": true,
+    "payload": {
+      "original_text": "Replace the placeholder Fireworks prices in config.yaml with the official Standard list rates and leave a comment citing the docs URL and date.",
+      "recipe": "default",
+      "decision_result": {
+        "decision_name": "moderate_change",
+        "algorithm": "static",
+        "plugins": [
+          "router_replay"
+        ],
+        "used_signals": {
+          "projection": [
+            "mid"
+          ]
+        },
+        "matched_signals": {
+          "complexity": [
+            "request_complexity:medium"
+          ],
+          "projection": [
+            "allow",
+            "mid"
+          ]
+        },
+        "unmatched_signals": {
+          "keywords": [
+            "secret_markers"
+          ],
+          "structure": [
+            "secret_pattern"
+          ],
+          "complexity": [
+            "request_complexity"
+          ],
+          "projection": [
+            "contain",
+            "cheap",
+            "hard"
+          ]
+        }
+      },
+      "recommended_models": [
+        "fireworks/glm-5p2"
+      ],
+      "routing_decision": "moderate_change",
+      "metrics": {
+        "keyword": {
+          "execution_time_ms": 0.051,
+          "confidence": 1
+        },
+        "embedding": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "domain": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "fact_check": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "user_feedback": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "reask": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "preference": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "language": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "context": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "structure": {
+          "execution_time_ms": 0.038,
+          "confidence": 0
+        },
+        "complexity": {
+          "execution_time_ms": 447.649,
+          "confidence": 0.032329119741916656
+        },
+        "modality": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "authz": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "jailbreak": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "pii": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "kb": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "conversation": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "event": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "metadata": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "classifier": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        }
+      },
+      "signal_confidences": {
+        "complexity:request_complexity:medium": 0.032329119741916656,
+        "projection:allow": 0.9975273768433653,
+        "projection:mid": 0.8581489350995123,
+        "structure:secret_pattern": 0
+      },
+      "signal_values": {
+        "complexity:request_complexity:image_easy_score": 0,
+        "complexity:request_complexity:image_hard_score": 0,
+        "complexity:request_complexity:image_margin": 0,
+        "complexity:request_complexity:margin": 0.032329119741916656,
+        "complexity:request_complexity:text_easy_score": 0.6415207982063293,
+        "complexity:request_complexity:text_hard_score": 0.673849917948246,
+        "complexity:request_complexity:text_margin": 0.032329119741916656,
+        "structure:secret_pattern": 0
+      }
+    }
+  },
+  {
+    "id": "hard-01",
+    "expected_band": "hard",
+    "expected_decision": "complex_reasoning",
+    "prompt": "Refactor config.yaml so routing decisions no longer match raw complexity labels. Introduce a projection score plus threshold-band mappings, and make security containment a higher-priority decision than cheap/mid/hard model selection.",
+    "ok": true,
+    "decision": "complex_reasoning",
+    "model": "fireworks/kimi-k2p7-code",
+    "matched": {
+      "complexity": [
+        "request_complexity:hard"
+      ],
+      "projection": [
+        "allow",
+        "hard"
+      ]
+    },
+    "used": {
+      "projection": [
+        "hard"
+      ]
+    },
+    "looks_right": true,
+    "payload": {
+      "original_text": "Refactor config.yaml so routing decisions no longer match raw complexity labels. Introduce a projection score plus threshold-band mappings, and make security containment a higher-priority decision than cheap/mid/hard model selection.",
+      "recipe": "default",
+      "decision_result": {
+        "decision_name": "complex_reasoning",
+        "algorithm": "static",
+        "plugins": [
+          "router_replay"
+        ],
+        "used_signals": {
+          "projection": [
+            "hard"
+          ]
+        },
+        "matched_signals": {
+          "complexity": [
+            "request_complexity:hard"
+          ],
+          "projection": [
+            "allow",
+            "hard"
+          ]
+        },
+        "unmatched_signals": {
+          "keywords": [
+            "secret_markers"
+          ],
+          "structure": [
+            "secret_pattern"
+          ],
+          "complexity": [
+            "request_complexity"
+          ],
+          "projection": [
+            "contain",
+            "cheap",
+            "mid"
+          ]
+        }
+      },
+      "recommended_models": [
+        "fireworks/kimi-k2p7-code"
+      ],
+      "routing_decision": "complex_reasoning",
+      "metrics": {
+        "keyword": {
+          "execution_time_ms": 0.047,
+          "confidence": 1
+        },
+        "embedding": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "domain": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "fact_check": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "user_feedback": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "reask": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "preference": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "language": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "context": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "structure": {
+          "execution_time_ms": 0.048,
+          "confidence": 0
+        },
+        "complexity": {
+          "execution_time_ms": 499.228,
+          "confidence": 0.4472866430878639
+        },
+        "modality": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "authz": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "jailbreak": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "pii": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "kb": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "conversation": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "event": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "metadata": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "classifier": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        }
+      },
+      "signal_confidences": {
+        "complexity:request_complexity:hard": 0.4472866430878639,
+        "projection:allow": 0.9975273768433653,
+        "projection:hard": 0.9168273035060777,
+        "structure:secret_pattern": 0
+      },
+      "signal_values": {
+        "complexity:request_complexity:image_easy_score": 0,
+        "complexity:request_complexity:image_hard_score": 0,
+        "complexity:request_complexity:image_margin": 0,
+        "complexity:request_complexity:margin": 0.4472866430878639,
+        "complexity:request_complexity:text_easy_score": 0.5147001445293427,
+        "complexity:request_complexity:text_hard_score": 0.9619867876172066,
+        "complexity:request_complexity:text_margin": 0.4472866430878639,
+        "structure:secret_pattern": 0
+      }
+    }
+  },
+  {
+    "id": "hard-02",
+    "expected_band": "hard",
+    "expected_decision": "complex_reasoning",
+    "prompt": "Design a local containment approach that refuses prompts containing API keys without loading a PII classifier. Compare keyword-only vs structure-regex vs a local model, and recommend the smallest version that is honest to publish.",
+    "ok": true,
+    "decision": "complex_reasoning",
+    "model": "fireworks/kimi-k2p7-code",
+    "matched": {
+      "complexity": [
+        "request_complexity:hard"
+      ],
+      "projection": [
+        "allow",
+        "hard"
+      ]
+    },
+    "used": {
+      "projection": [
+        "hard"
+      ]
+    },
+    "looks_right": true,
+    "payload": {
+      "original_text": "Design a local containment approach that refuses prompts containing API keys without loading a PII classifier. Compare keyword-only vs structure-regex vs a local model, and recommend the smallest version that is honest to publish.",
+      "recipe": "default",
+      "decision_result": {
+        "decision_name": "complex_reasoning",
+        "algorithm": "static",
+        "plugins": [
+          "router_replay"
+        ],
+        "used_signals": {
+          "projection": [
+            "hard"
+          ]
+        },
+        "matched_signals": {
+          "complexity": [
+            "request_complexity:hard"
+          ],
+          "projection": [
+            "allow",
+            "hard"
+          ]
+        },
+        "unmatched_signals": {
+          "keywords": [
+            "secret_markers"
+          ],
+          "structure": [
+            "secret_pattern"
+          ],
+          "complexity": [
+            "request_complexity"
+          ],
+          "projection": [
+            "contain",
+            "cheap",
+            "mid"
+          ]
+        }
+      },
+      "recommended_models": [
+        "fireworks/kimi-k2p7-code"
+      ],
+      "routing_decision": "complex_reasoning",
+      "metrics": {
+        "keyword": {
+          "execution_time_ms": 0.055,
+          "confidence": 1
+        },
+        "embedding": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "domain": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "fact_check": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "user_feedback": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "reask": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "preference": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "language": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "context": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "structure": {
+          "execution_time_ms": 0.045,
+          "confidence": 0
+        },
+        "complexity": {
+          "execution_time_ms": 505.816,
+          "confidence": 0.38468240201473236
+        },
+        "modality": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "authz": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "jailbreak": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "pii": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "kb": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "conversation": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "event": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "metadata": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "classifier": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        }
+      },
+      "signal_confidences": {
+        "complexity:request_complexity:hard": 0.38468240201473236,
+        "projection:allow": 0.9975273768433653,
+        "projection:hard": 0.9168273035060777,
+        "structure:secret_pattern": 0
+      },
+      "signal_values": {
+        "complexity:request_complexity:image_easy_score": 0,
+        "complexity:request_complexity:image_hard_score": 0,
+        "complexity:request_complexity:image_margin": 0,
+        "complexity:request_complexity:margin": 0.38468240201473236,
+        "complexity:request_complexity:text_easy_score": 0.5754083916544914,
+        "complexity:request_complexity:text_hard_score": 0.9600907936692238,
+        "complexity:request_complexity:text_margin": 0.38468240201473236,
+        "structure:secret_pattern": 0
+      }
+    }
+  },
+  {
+    "id": "hard-03",
+    "expected_band": "hard",
+    "expected_decision": "complex_reasoning",
+    "prompt": "Debug why router_replay only recorded hard-tier requests. Walk through decision-scoped plugins vs global.services.router_replay and propose a fix that captures cheap, mid, hard, and refused routes.",
+    "ok": true,
+    "decision": "complex_reasoning",
+    "model": "fireworks/kimi-k2p7-code",
+    "matched": {
+      "complexity": [
+        "request_complexity:hard"
+      ],
+      "projection": [
+        "allow",
+        "hard"
+      ]
+    },
+    "used": {
+      "projection": [
+        "hard"
+      ]
+    },
+    "looks_right": true,
+    "payload": {
+      "original_text": "Debug why router_replay only recorded hard-tier requests. Walk through decision-scoped plugins vs global.services.router_replay and propose a fix that captures cheap, mid, hard, and refused routes.",
+      "recipe": "default",
+      "decision_result": {
+        "decision_name": "complex_reasoning",
+        "algorithm": "static",
+        "plugins": [
+          "router_replay"
+        ],
+        "used_signals": {
+          "projection": [
+            "hard"
+          ]
+        },
+        "matched_signals": {
+          "complexity": [
+            "request_complexity:hard"
+          ],
+          "projection": [
+            "allow",
+            "hard"
+          ]
+        },
+        "unmatched_signals": {
+          "keywords": [
+            "secret_markers"
+          ],
+          "structure": [
+            "secret_pattern"
+          ],
+          "complexity": [
+            "request_complexity"
+          ],
+          "projection": [
+            "contain",
+            "cheap",
+            "mid"
+          ]
+        }
+      },
+      "recommended_models": [
+        "fireworks/kimi-k2p7-code"
+      ],
+      "routing_decision": "complex_reasoning",
+      "metrics": {
+        "keyword": {
+          "execution_time_ms": 0.062,
+          "confidence": 1
+        },
+        "embedding": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "domain": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "fact_check": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "user_feedback": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "reask": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "preference": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "language": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "context": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "structure": {
+          "execution_time_ms": 0.044,
+          "confidence": 0
+        },
+        "complexity": {
+          "execution_time_ms": 753.51,
+          "confidence": 0.4622456729412079
+        },
+        "modality": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "authz": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "jailbreak": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "pii": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "kb": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "conversation": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "event": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "metadata": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "classifier": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        }
+      },
+      "signal_confidences": {
+        "complexity:request_complexity:hard": 0.4622456729412079,
+        "projection:allow": 0.9975273768433653,
+        "projection:hard": 0.9168273035060777,
+        "structure:secret_pattern": 0
+      },
+      "signal_values": {
+        "complexity:request_complexity:image_easy_score": 0,
+        "complexity:request_complexity:image_hard_score": 0,
+        "complexity:request_complexity:image_margin": 0,
+        "complexity:request_complexity:margin": 0.4622456729412079,
+        "complexity:request_complexity:text_easy_score": 0.4954782724380493,
+        "complexity:request_complexity:text_hard_score": 0.9577239453792572,
+        "complexity:request_complexity:text_margin": 0.4622456729412079,
+        "structure:secret_pattern": 0
+      }
+    }
+  },
+  {
+    "id": "hard-04",
+    "expected_band": "hard",
+    "expected_decision": "complex_reasoning",
+    "prompt": "Compare always routing Claude Code turns to Kimi K2.7 Code versus complexity-based shifting across MiniMax M3, GLM 5.2, and K2.7 Code. Call out when the mid-tier is a waste and when the cheap model is unsafe.",
+    "ok": true,
+    "decision": "complex_reasoning",
+    "model": "fireworks/kimi-k2p7-code",
+    "matched": {
+      "complexity": [
+        "request_complexity:hard"
+      ],
+      "projection": [
+        "allow",
+        "hard"
+      ]
+    },
+    "used": {
+      "projection": [
+        "hard"
+      ]
+    },
+    "looks_right": true,
+    "payload": {
+      "original_text": "Compare always routing Claude Code turns to Kimi K2.7 Code versus complexity-based shifting across MiniMax M3, GLM 5.2, and K2.7 Code. Call out when the mid-tier is a waste and when the cheap model is unsafe.",
+      "recipe": "default",
+      "decision_result": {
+        "decision_name": "complex_reasoning",
+        "algorithm": "static",
+        "plugins": [
+          "router_replay"
+        ],
+        "used_signals": {
+          "projection": [
+            "hard"
+          ]
+        },
+        "matched_signals": {
+          "complexity": [
+            "request_complexity:hard"
+          ],
+          "projection": [
+            "allow",
+            "hard"
+          ]
+        },
+        "unmatched_signals": {
+          "keywords": [
+            "secret_markers"
+          ],
+          "structure": [
+            "secret_pattern"
+          ],
+          "complexity": [
+            "request_complexity"
+          ],
+          "projection": [
+            "contain",
+            "cheap",
+            "mid"
+          ]
+        }
+      },
+      "recommended_models": [
+        "fireworks/kimi-k2p7-code"
+      ],
+      "routing_decision": "complex_reasoning",
+      "metrics": {
+        "keyword": {
+          "execution_time_ms": 0.052,
+          "confidence": 1
+        },
+        "embedding": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "domain": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "fact_check": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "user_feedback": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "reask": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "preference": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "language": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "context": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "structure": {
+          "execution_time_ms": 0.04,
+          "confidence": 0
+        },
+        "complexity": {
+          "execution_time_ms": 529.909,
+          "confidence": 0.459208108484745
+        },
+        "modality": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "authz": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "jailbreak": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "pii": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "kb": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "conversation": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "event": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "metadata": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "classifier": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        }
+      },
+      "signal_confidences": {
+        "complexity:request_complexity:hard": 0.459208108484745,
+        "projection:allow": 0.9975273768433653,
+        "projection:hard": 0.9168273035060777,
+        "structure:secret_pattern": 0
+      },
+      "signal_values": {
+        "complexity:request_complexity:image_easy_score": 0,
+        "complexity:request_complexity:image_hard_score": 0,
+        "complexity:request_complexity:image_margin": 0,
+        "complexity:request_complexity:margin": 0.459208108484745,
+        "complexity:request_complexity:text_easy_score": 0.5027780011296272,
+        "complexity:request_complexity:text_hard_score": 0.9619861096143723,
+        "complexity:request_complexity:text_margin": 0.459208108484745,
+        "structure:secret_pattern": 0
+      }
+    }
+  },
+  {
+    "id": "hard-05",
+    "expected_band": "hard",
+    "expected_decision": "complex_reasoning",
+    "prompt": "Implement a cost-chart script that reads router_replay records, prices them with official Fireworks Standard rates, and emits a static-vs-dynamic comparison for the same prompt set.",
+    "ok": true,
+    "decision": "complex_reasoning",
+    "model": "fireworks/kimi-k2p7-code",
+    "matched": {
+      "complexity": [
+        "request_complexity:hard"
+      ],
+      "projection": [
+        "allow",
+        "hard"
+      ]
+    },
+    "used": {
+      "projection": [
+        "hard"
+      ]
+    },
+    "looks_right": true,
+    "payload": {
+      "original_text": "Implement a cost-chart script that reads router_replay records, prices them with official Fireworks Standard rates, and emits a static-vs-dynamic comparison for the same prompt set.",
+      "recipe": "default",
+      "decision_result": {
+        "decision_name": "complex_reasoning",
+        "algorithm": "static",
+        "plugins": [
+          "router_replay"
+        ],
+        "used_signals": {
+          "projection": [
+            "hard"
+          ]
+        },
+        "matched_signals": {
+          "complexity": [
+            "request_complexity:hard"
+          ],
+          "projection": [
+            "allow",
+            "hard"
+          ]
+        },
+        "unmatched_signals": {
+          "keywords": [
+            "secret_markers"
+          ],
+          "structure": [
+            "secret_pattern"
+          ],
+          "complexity": [
+            "request_complexity"
+          ],
+          "projection": [
+            "contain",
+            "cheap",
+            "mid"
+          ]
+        }
+      },
+      "recommended_models": [
+        "fireworks/kimi-k2p7-code"
+      ],
+      "routing_decision": "complex_reasoning",
+      "metrics": {
+        "keyword": {
+          "execution_time_ms": 0.05,
+          "confidence": 1
+        },
+        "embedding": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "domain": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "fact_check": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "user_feedback": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "reask": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "preference": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "language": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "context": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "structure": {
+          "execution_time_ms": 0.043,
+          "confidence": 0
+        },
+        "complexity": {
+          "execution_time_ms": 461.178,
+          "confidence": 0.37705325335264206
+        },
+        "modality": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "authz": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "jailbreak": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "pii": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "kb": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "conversation": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "event": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "metadata": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "classifier": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        }
+      },
+      "signal_confidences": {
+        "complexity:request_complexity:hard": 0.37705325335264206,
+        "projection:allow": 0.9975273768433653,
+        "projection:hard": 0.9168273035060777,
+        "structure:secret_pattern": 0
+      },
+      "signal_values": {
+        "complexity:request_complexity:image_easy_score": 0,
+        "complexity:request_complexity:image_hard_score": 0,
+        "complexity:request_complexity:image_margin": 0,
+        "complexity:request_complexity:margin": 0.37705325335264206,
+        "complexity:request_complexity:text_easy_score": 0.5806701183319092,
+        "complexity:request_complexity:text_hard_score": 0.9577233716845512,
+        "complexity:request_complexity:text_margin": 0.37705325335264206,
+        "structure:secret_pattern": 0
+      }
+    }
+  },
+  {
+    "id": "secret-01",
+    "expected_band": "contain",
+    "expected_decision": "contain_secrets",
+    "prompt": "Please call Fireworks with FIREWORKS_API_KEY=fw_test_not_a_real_key_do_not_send",
+    "ok": true,
+    "decision": "contain_secrets",
+    "model": "fireworks/minimax-m3",
+    "matched": {
+      "keywords": [
+        "secret_markers"
+      ],
+      "structure": [
+        "secret_pattern"
+      ],
+      "complexity": [
+        "request_complexity:medium"
+      ],
+      "projection": [
+        "contain",
+        "mid"
+      ]
+    },
+    "used": {
+      "projection": [
+        "contain"
+      ]
+    },
+    "looks_right": true,
+    "payload": {
+      "original_text": "Please call Fireworks with FIREWORKS_API_KEY=fw_test_not_a_real_key_do_not_send",
+      "recipe": "default",
+      "decision_result": {
+        "decision_name": "contain_secrets",
+        "algorithm": "static",
+        "plugins": [
+          "fast_response",
+          "router_replay"
+        ],
+        "used_signals": {
+          "projection": [
+            "contain"
+          ]
+        },
+        "matched_signals": {
+          "keywords": [
+            "secret_markers"
+          ],
+          "structure": [
+            "secret_pattern"
+          ],
+          "complexity": [
+            "request_complexity:medium"
+          ],
+          "projection": [
+            "contain",
+            "mid"
+          ]
+        },
+        "unmatched_signals": {
+          "complexity": [
+            "request_complexity"
+          ],
+          "projection": [
+            "allow",
+            "cheap",
+            "hard"
+          ]
+        }
+      },
+      "recommended_models": [
+        "fireworks/minimax-m3"
+      ],
+      "routing_decision": "contain_secrets",
+      "metrics": {
+        "keyword": {
+          "execution_time_ms": 0.159,
+          "confidence": 1
+        },
+        "embedding": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "domain": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "fact_check": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "user_feedback": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "reask": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "preference": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "language": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "context": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "structure": {
+          "execution_time_ms": 0.027,
+          "confidence": 1
+        },
+        "complexity": {
+          "execution_time_ms": 432.45,
+          "confidence": 0.10756263881921768
+        },
+        "modality": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "authz": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "jailbreak": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "pii": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "kb": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "conversation": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "event": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "metadata": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "classifier": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        }
+      },
+      "signal_confidences": {
+        "complexity:request_complexity:medium": 0.10756263881921768,
+        "projection:contain": 0.9999999847700205,
+        "projection:mid": 0.8581489350995123,
+        "structure:secret_pattern": 1
+      },
+      "signal_values": {
+        "complexity:request_complexity:image_easy_score": 0,
+        "complexity:request_complexity:image_hard_score": 0,
+        "complexity:request_complexity:image_margin": 0,
+        "complexity:request_complexity:margin": -0.10756263881921768,
+        "complexity:request_complexity:text_easy_score": 0.5701268836855888,
+        "complexity:request_complexity:text_hard_score": 0.46256424486637115,
+        "complexity:request_complexity:text_margin": -0.10756263881921768,
+        "structure:secret_pattern": 1
+      }
+    }
+  },
+  {
+    "id": "secret-02",
+    "expected_band": "contain",
+    "expected_decision": "contain_secrets",
+    "prompt": "Debug this AWS error. Credentials are AKIAIOSFODNN7EXAMPLE and I pasted them into the agent chat.",
+    "ok": true,
+    "decision": "contain_secrets",
+    "model": "fireworks/minimax-m3",
+    "matched": {
+      "structure": [
+        "secret_pattern"
+      ],
+      "complexity": [
+        "request_complexity:medium"
+      ],
+      "projection": [
+        "contain",
+        "mid"
+      ]
+    },
+    "used": {
+      "projection": [
+        "contain"
+      ]
+    },
+    "looks_right": true,
+    "payload": {
+      "original_text": "Debug this AWS error. Credentials are AKIAIOSFODNN7EXAMPLE and I pasted them into the agent chat.",
+      "recipe": "default",
+      "decision_result": {
+        "decision_name": "contain_secrets",
+        "algorithm": "static",
+        "plugins": [
+          "fast_response",
+          "router_replay"
+        ],
+        "used_signals": {
+          "projection": [
+            "contain"
+          ]
+        },
+        "matched_signals": {
+          "structure": [
+            "secret_pattern"
+          ],
+          "complexity": [
+            "request_complexity:medium"
+          ],
+          "projection": [
+            "contain",
+            "mid"
+          ]
+        },
+        "unmatched_signals": {
+          "keywords": [
+            "secret_markers"
+          ],
+          "complexity": [
+            "request_complexity"
+          ],
+          "projection": [
+            "allow",
+            "cheap",
+            "hard"
+          ]
+        }
+      },
+      "recommended_models": [
+        "fireworks/minimax-m3"
+      ],
+      "routing_decision": "contain_secrets",
+      "metrics": {
+        "keyword": {
+          "execution_time_ms": 0.108,
+          "confidence": 1
+        },
+        "embedding": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "domain": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "fact_check": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "user_feedback": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "reask": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "preference": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "language": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "context": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "structure": {
+          "execution_time_ms": 0.029,
+          "confidence": 1
+        },
+        "complexity": {
+          "execution_time_ms": 452.686,
+          "confidence": 0.007824346423149109
+        },
+        "modality": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "authz": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "jailbreak": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "pii": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "kb": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "conversation": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "event": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "metadata": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "classifier": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        }
+      },
+      "signal_confidences": {
+        "complexity:request_complexity:medium": 0.007824346423149109,
+        "projection:contain": 0.9975273768433653,
+        "projection:mid": 0.8581489350995123,
+        "structure:secret_pattern": 1
+      },
+      "signal_values": {
+        "complexity:request_complexity:image_easy_score": 0,
+        "complexity:request_complexity:image_hard_score": 0,
+        "complexity:request_complexity:image_margin": 0,
+        "complexity:request_complexity:margin": 0.007824346423149109,
+        "complexity:request_complexity:text_easy_score": 0.579260841012001,
+        "complexity:request_complexity:text_hard_score": 0.5870851874351501,
+        "complexity:request_complexity:text_margin": 0.007824346423149109,
+        "structure:secret_pattern": 1
+      }
+    }
+  },
+  {
+    "id": "secret-03",
+    "expected_band": "contain",
+    "expected_decision": "contain_secrets",
+    "prompt": "The deploy failed after I committed -----BEGIN PRIVATE KEY----- MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC fake-material",
+    "ok": true,
+    "decision": "contain_secrets",
+    "model": "fireworks/minimax-m3",
+    "matched": {
+      "keywords": [
+        "secret_markers"
+      ],
+      "complexity": [
+        "request_complexity:medium"
+      ],
+      "projection": [
+        "contain",
+        "mid"
+      ]
+    },
+    "used": {
+      "projection": [
+        "contain"
+      ]
+    },
+    "looks_right": true,
+    "payload": {
+      "original_text": "The deploy failed after I committed -----BEGIN PRIVATE KEY----- MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC fake-material",
+      "recipe": "default",
+      "decision_result": {
+        "decision_name": "contain_secrets",
+        "algorithm": "static",
+        "plugins": [
+          "fast_response",
+          "router_replay"
+        ],
+        "used_signals": {
+          "projection": [
+            "contain"
+          ]
+        },
+        "matched_signals": {
+          "keywords": [
+            "secret_markers"
+          ],
+          "complexity": [
+            "request_complexity:medium"
+          ],
+          "projection": [
+            "contain",
+            "mid"
+          ]
+        },
+        "unmatched_signals": {
+          "structure": [
+            "secret_pattern"
+          ],
+          "complexity": [
+            "request_complexity"
+          ],
+          "projection": [
+            "allow",
+            "cheap",
+            "hard"
+          ]
+        }
+      },
+      "recommended_models": [
+        "fireworks/minimax-m3"
+      ],
+      "routing_decision": "contain_secrets",
+      "metrics": {
+        "keyword": {
+          "execution_time_ms": 0.184,
+          "confidence": 1
+        },
+        "embedding": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "domain": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "fact_check": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "user_feedback": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "reask": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "preference": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "language": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "context": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "structure": {
+          "execution_time_ms": 0.052,
+          "confidence": 0
+        },
+        "complexity": {
+          "execution_time_ms": 494.214,
+          "confidence": 0.0273788683116436
+        },
+        "modality": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "authz": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "jailbreak": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "pii": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "kb": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "conversation": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "event": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "metadata": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        },
+        "classifier": {
+          "execution_time_ms": 0,
+          "confidence": 0
+        }
+      },
+      "signal_confidences": {
+        "complexity:request_complexity:medium": 0.0273788683116436,
+        "projection:contain": 0.9975273768433653,
+        "projection:mid": 0.8581489350995123,
+        "structure:secret_pattern": 0
+      },
+      "signal_values": {
+        "complexity:request_complexity:image_easy_score": 0,
+        "complexity:request_complexity:image_hard_score": 0,
+        "complexity:request_complexity:image_margin": 0,
+        "complexity:request_complexity:margin": -0.0273788683116436,
+        "complexity:request_complexity:text_easy_score": 0.5313282683491707,
+        "complexity:request_complexity:text_hard_score": 0.5039494000375271,
+        "complexity:request_complexity:text_margin": -0.0273788683116436,
+        "structure:secret_pattern": 0
+      }
+    }
+  }
+]

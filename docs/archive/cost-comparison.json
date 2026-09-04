@@ -1,0 +1,45 @@
+{
+  "pricing_source": "https://docs.fireworks.ai/serverless/pricing",
+  "pricing_as_of": "2026-09-03",
+  "strong_model": "fireworks/kimi-k2p7-code",
+  "mid_model": "fireworks/glm-5p2",
+  "n_records": 3,
+  "n_skipped": 1,
+  "dynamic_usd": 0.0024487,
+  "always_strong_usd": 0.00283225,
+  "always_mid_usd": 0.0031918000000000007,
+  "vs_always_strong_usd": 0.0003835500000000003,
+  "vs_always_strong_pct": 13.542236737576141,
+  "vs_always_mid_usd": 0.0007431000000000009,
+  "vs_always_mid_pct": 23.28153393069743,
+  "note": "Official Standard $/1M on token counts from the source dump. GLM 5.2 list price is higher than K2.7 Code, so the mid band is quality, not cheaper. Label eval-only rows as extrapolated.",
+  "rows": [
+    {
+      "decision": "cheap",
+      "model": "accounts/fireworks/models/minimax-m3",
+      "prompt_tokens": 141,
+      "completion_tokens": 145,
+      "dynamic_usd": 0.0002163,
+      "always_strong_usd": 0.0007139500000000001,
+      "always_mid_usd": 0.0008354
+    },
+    {
+      "decision": "mid",
+      "model": "accounts/fireworks/models/glm-5p2",
+      "prompt_tokens": 26,
+      "completion_tokens": 256,
+      "dynamic_usd": 0.0011628,
+      "always_strong_usd": 0.0010487,
+      "always_mid_usd": 0.0011628
+    },
+    {
+      "decision": "hard",
+      "model": "accounts/fireworks/models/kimi-k2p7-code",
+      "prompt_tokens": 48,
+      "completion_tokens": 256,
+      "dynamic_usd": 0.0010696,
+      "always_strong_usd": 0.0010696,
+      "always_mid_usd": 0.0011936000000000002
+    }
+  ]
+}

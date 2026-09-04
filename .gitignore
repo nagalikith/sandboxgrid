@@ -11,3 +11,7 @@ sandbox.db
 dist/
 build/
 .env
+.vllm-sr/
+models/
+docs/eval-results.json
+docs/eval-results.before.json

@@ -2,6 +2,8 @@
 
 > Disposable browser sandboxes for AI agents — provisioning, live view, artifacts, and audit trails behind one API.
 
+**Also in this workspace:** a local [vLLM Semantic Router](https://github.com/vllm-project/semantic-router) demo in front of Fireworks serverless. Start at [`ROUTING.md`](ROUTING.md) (`config.yaml`, `scripts/`, `fixtures/`). It is not part of the sandboxgrid product.
+
 sandboxgrid turns "give me a browser" into an API call. Each sandbox is an isolated Chromium environment with its own lifecycle (request → provision → ready → terminated), a live-view URL for humans to watch or take over, CDP access for automation code, and an artifact store that records everything the agent touched.
 
 ```
